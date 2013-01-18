@@ -278,7 +278,12 @@ extern jmp_buf save_env;
 #define PTE_ACC         (PTE_M_ACC << PTE_V_ACC)
 #define PTE_V_M         26                              /* modified */
 #define PTE_M           (1u << PTE_V_M)
+#define PTE_V_SW        21                              /* software */
+#define PTE_M_SW        0x3
+#define PTE_SW          (PTE_M_SW << PTE_V_SW)
+#define PTE_PFN         0x1FFFFF
 #define PTE_GETACC(x)   (((x) >> PTE_V_ACC) & PTE_M_ACC)
+#define PTE_GETSW(x)    (((x) >> PTE_V_SW) & PTE_M_SW)
 
 /* TLB entry */
 

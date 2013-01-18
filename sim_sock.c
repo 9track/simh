@@ -854,8 +854,8 @@ if (r)
 memset(&hints, 0, sizeof(hints));
 hints.ai_flags = AI_PASSIVE;
 hints.ai_family = AF_UNSPEC;
-hints.ai_protocol = IPPROTO_TCP;
-hints.ai_socktype = SOCK_STREAM;
+hints.ai_protocol = ((opt_flags & SIM_SOCK_OPT_MULTICAST) ? IPPROTO_UDP : IPPROTO_TCP);
+hints.ai_socktype = ((opt_flags & SIM_SOCK_OPT_MULTICAST) ? SOCK_DGRAM : SOCK_STREAM);
 if (p_getaddrinfo(host[0] ? host : NULL, port[0] ? port : NULL, &hints, &result)) {
     if (parse_status)
         *parse_status = -1;
@@ -902,6 +902,14 @@ if (opt_flags & SIM_SOCK_OPT_REUSEADDR) {
     int on = 1;
 
     sta = setsockopt (newsock, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));
+    }
+if (opt_flags & SIM_SOCK_OPT_MULTICAST) {
+    int on = 1;
+
+    if (preferred->ai_family == AF_INET6)
+        sta = setsockopt (newsock, IPPROTO_IPV6, IPV6_JOIN_GROUP, (char *)&on, sizeof(on));
+    else
+        sta = setsockopt (newsock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&on, sizeof(on));
     }
 #if defined (SO_EXCLUSIVEADDRUSE)
 else {
@@ -1234,9 +1242,96 @@ if (rbytes == SOCKET_ERROR) {
 return rbytes;
 }
 
+int sim_read_sock_ex (SOCKET sock, char *buf, int nbytes, char **recvaddr)
+{
+int rbytes, err;
+#if defined (macintosh) || defined (__linux) || defined (__linux__) || \
+    defined (__APPLE__) || defined (__OpenBSD__) || \
+    defined(__NetBSD__) || defined(__FreeBSD__) || \
+    (defined(__hpux) && defined(_XOPEN_SOURCE_EXTENDED)) || \
+    defined (__HAIKU__)
+socklen_t size;
+#elif defined (_WIN32) || defined (__EMX__) || \
+     (defined (__ALPHA) && defined (__unix__)) || \
+     defined (__hpux)
+int size;
+#else 
+size_t size; 
+#endif
+struct sockaddr_storage clientname;
+
+size = sizeof (clientname);
+memset (&clientname, 0, sizeof(clientname));
+rbytes = recvfrom (sock, buf, nbytes, 0, (struct sockaddr *) &clientname, &size);
+if (rbytes == 0)                                        /* disconnect */
+    return -1;
+if (rbytes == SOCKET_ERROR) {
+    err = WSAGetLastError ();
+    if (err == WSAEWOULDBLOCK)                          /* no data */
+        return 0;
+#if defined(EAGAIN)
+    if (err == EAGAIN)                                  /* no data */
+        return 0;
+#endif
+    if ((err != WSAETIMEDOUT) &&                        /* expected errors after a connect failure */
+        (err != WSAEHOSTUNREACH) &&
+        (err != WSAECONNREFUSED) &&
+        (err != WSAECONNABORTED) &&
+        (err != WSAECONNRESET) &&
+        (err != WSAEINTR))                              /* or a close of a blocking read */
+        sim_err_sock (INVALID_SOCKET, "read");
+    return -1;
+    }
+if (recvaddr != NULL) {
+    *recvaddr = (char *)calloc(1, NI_MAXHOST+1);
+#ifdef AF_INET6
+    p_getnameinfo((struct sockaddr *)&clientname, size, *recvaddr, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+    if (0 == memcmp("::ffff:", *recvaddr, 7))           /* is this a IPv4-mapped IPv6 address? */
+        memmove(*recvaddr, 7+*recvaddr,                 /* prefer bare IPv4 address */
+                strlen(*recvaddr) - 7 + 1);             /* length to include terminating \0 */
+#else
+    strcpy(*recvaddr, inet_ntoa(((struct sockaddr_in *)&clientname)->s_addr));
+#endif
+    }
+return rbytes;
+}
+
 int sim_write_sock (SOCKET sock, const char *msg, int nbytes)
 {
 int err, sbytes = send (sock, msg, nbytes, 0);
+
+if (sbytes == SOCKET_ERROR) {
+    err = WSAGetLastError ();
+    if (err == WSAEWOULDBLOCK)                          /* no data */
+        return 0;
+#if defined(EAGAIN)
+    if (err == EAGAIN)                                  /* no data */
+        return 0;
+#endif
+    }
+return sbytes;
+}
+
+int sim_write_sock_ex (SOCKET sock, const char *msg, int nbytes, char *sendaddr, int opt_flags)
+{
+int err, sbytes;
+char host[CBUFSIZE], port[CBUFSIZE];
+struct addrinfo hints;
+struct addrinfo *result = NULL, *source = NULL;
+
+if (sim_parse_addr (sendaddr, host, sizeof(host), NULL, port, sizeof(port), NULL, NULL))
+    return INVALID_SOCKET;
+
+memset(&hints, 0, sizeof(hints));
+hints.ai_family = AF_UNSPEC;
+hints.ai_protocol = ((opt_flags & SIM_SOCK_OPT_DATAGRAM) ? IPPROTO_UDP : IPPROTO_TCP);
+hints.ai_socktype = ((opt_flags & SIM_SOCK_OPT_DATAGRAM) ? SOCK_DGRAM : SOCK_STREAM);
+if (p_getaddrinfo(host, port, &hints, &result)) {
+    p_freeaddrinfo (result);
+    return INVALID_SOCKET;
+    }
+
+sbytes = sendto (sock, msg, nbytes, 0, result->ai_addr, result->ai_addrlen);
 
 if (sbytes == SOCKET_ERROR) {
     err = WSAGetLastError ();

@@ -1423,9 +1423,10 @@ VAX730_OPT = -DVM_VAX -DVAX_730 -DUSE_INT64 -DUSE_ADDR64 -I VAX -I ${PDP11D} ${N
 VAX750 = ${VAXD}/vax_cpu.c ${VAXD}/vax_cpu1.c ${VAXD}/vax_fpa.c \
 	${VAXD}/vax_cis.c ${VAXD}/vax_octa.c  ${VAXD}/vax_cmode.c \
 	${VAXD}/vax_mmu.c ${VAXD}/vax_sys.c  ${VAXD}/vax_syscm.c \
-	${VAXD}/vax750_stddev.c ${VAXD}/vax750_cmi.c \
-	${VAXD}/vax750_mem.c ${VAXD}/vax750_uba.c ${VAXD}/vax7x0_mba.c \
-	${VAXD}/vax750_syslist.c \
+	${VAXD}/vax_gvp.c ${VAXD}/vax_ci.c ${VAXD}/vax750_stddev.c \
+	${VAXD}/vax750_cmi.c ${VAXD}/vax750_mem.c ${VAXD}/vax750_uba.c \
+	${VAXD}/vax7x0_mba.c ${VAXD}/vax780_ci.c ${VAXD}/vax750_syslist.c \
+	${VAXD}/ci_sock.c \
 	${PDP11D}/pdp11_rl.c ${PDP11D}/pdp11_rq.c ${PDP11D}/pdp11_ts.c \
 	${PDP11D}/pdp11_dz.c ${PDP11D}/pdp11_lp.c ${PDP11D}/pdp11_tq.c \
 	${PDP11D}/pdp11_xu.c ${PDP11D}/pdp11_ry.c ${PDP11D}/pdp11_cr.c \
@@ -1439,9 +1440,10 @@ VAX750_OPT = -DVM_VAX -DVAX_750 -DUSE_INT64 -DUSE_ADDR64 -I VAX -I ${PDP11D} ${N
 VAX780 = ${VAXD}/vax_cpu.c ${VAXD}/vax_cpu1.c ${VAXD}/vax_fpa.c \
 	${VAXD}/vax_cis.c ${VAXD}/vax_octa.c  ${VAXD}/vax_cmode.c \
 	${VAXD}/vax_mmu.c ${VAXD}/vax_sys.c  ${VAXD}/vax_syscm.c \
-	${VAXD}/vax780_stddev.c ${VAXD}/vax780_sbi.c \
-	${VAXD}/vax780_mem.c ${VAXD}/vax780_uba.c ${VAXD}/vax7x0_mba.c \
-	${VAXD}/vax780_fload.c ${VAXD}/vax780_syslist.c \
+	${VAXD}/vax_gvp.c ${VAXD}/vax_ci.c ${VAXD}/vax780_stddev.c \
+	${VAXD}/vax780_sbi.c ${VAXD}/vax780_mem.c ${VAXD}/vax780_uba.c \
+	${VAXD}/vax7x0_mba.c ${VAXD}/vax780_ci.c ${VAXD}/vax780_fload.c \
+	${VAXD}/vax780_syslist.c ${VAXD}/ci_sock.c \
 	${PDP11D}/pdp11_rl.c ${PDP11D}/pdp11_rq.c ${PDP11D}/pdp11_ts.c \
 	${PDP11D}/pdp11_dz.c ${PDP11D}/pdp11_lp.c ${PDP11D}/pdp11_tq.c \
 	${PDP11D}/pdp11_xu.c ${PDP11D}/pdp11_ry.c ${PDP11D}/pdp11_cr.c \
@@ -1470,9 +1472,10 @@ VAX8200_OPT = -DVM_VAX -DVAX_820 -DUSE_INT64 -DUSE_ADDR64 -I VAX -I ${PDP11D} ${
 VAX8600 = ${VAXD}/vax_cpu.c ${VAXD}/vax_cpu1.c ${VAXD}/vax_fpa.c \
 	${VAXD}/vax_cis.c ${VAXD}/vax_octa.c  ${VAXD}/vax_cmode.c \
 	${VAXD}/vax_mmu.c ${VAXD}/vax_sys.c  ${VAXD}/vax_syscm.c \
-	${VAXD}/vax860_stddev.c ${VAXD}/vax860_sbia.c \
-	${VAXD}/vax860_abus.c ${VAXD}/vax780_uba.c ${VAXD}/vax7x0_mba.c \
-	${VAXD}/vax860_syslist.c \
+	${VAXD}/vax_gvp.c ${VAXD}/vax_ci.c ${VAXD}/vax860_stddev.c \
+	${VAXD}/vax860_sbia.c ${VAXD}/vax860_abus.c ${VAXD}/vax780_uba.c \
+	${VAXD}/vax7x0_mba.c ${VAXD}/vax780_ci.c ${VAXD}/vax860_syslist.c \
+	${VAXD}/ci_sock.c \
 	${PDP11D}/pdp11_rl.c ${PDP11D}/pdp11_rq.c ${PDP11D}/pdp11_ts.c \
 	${PDP11D}/pdp11_dz.c ${PDP11D}/pdp11_lp.c ${PDP11D}/pdp11_tq.c \
 	${PDP11D}/pdp11_xu.c ${PDP11D}/pdp11_ry.c ${PDP11D}/pdp11_cr.c \

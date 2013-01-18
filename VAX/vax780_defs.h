@@ -104,6 +104,7 @@
 #define TR_UBA          3
 #define TR_MBA0         8
 #define TR_MBA1         9
+#define TR_CI           14
 #define NEXUS_HLVL      (IPL_HMAX - IPL_HMIN + 1)
 #define SCB_NEXUS       0x100                           /* nexus intr base */
 #define SBI_FAULTS      0xFC000000                      /* SBI fault flags */
@@ -118,6 +119,7 @@
 #define IPL_UBA         (0x15 - IPL_HMIN)
 #define IPL_MBA0        (0x15 - IPL_HMIN)
 #define IPL_MBA1        (0x15 - IPL_HMIN)
+#define IPL_CI          (0x15 - IPL_HMIN)
 
 /* Nexus interrupt macros */
 
@@ -433,6 +435,7 @@ typedef struct {
 #define BOOT_HK         1                               /* for VMB */
 #define BOOT_RL         2
 #define BOOT_UDA        17
+#define BOOT_CI         32
 #define BOOT_CS         64
 
 /* Function prototypes for I/O */

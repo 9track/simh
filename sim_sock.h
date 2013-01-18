@@ -117,6 +117,7 @@ int sim_parse_addr_ex (const char *cptr, char *host, size_t hostlen, const char 
 #define SIM_SOCK_OPT_DATAGRAM       0x0002
 #define SIM_SOCK_OPT_NODELAY        0x0004
 #define SIM_SOCK_OPT_BLOCKING       0x0008
+#define SIM_SOCK_OPT_MULTICAST      0x0010
 SOCKET sim_master_sock_ex (const char *hostport, int *parse_status, int opt_flags);
 #define sim_master_sock(hostport, parse_status) sim_master_sock_ex(hostport, parse_status, ((sim_switches & SWMASK ('U')) ? SIM_SOCK_OPT_REUSEADDR : 0))
 SOCKET sim_connect_sock_ex (const char *sourcehostport, const char *hostport, const char *default_host, const char *default_port, int opt_flags);
@@ -125,7 +126,9 @@ SOCKET sim_accept_conn_ex (SOCKET master, char **connectaddr, int opt_flags);
 #define sim_accept_conn(master, connectaddr) sim_accept_conn_ex(master, connectaddr, 0)
 int sim_check_conn (SOCKET sock, int rd);
 int sim_read_sock (SOCKET sock, char *buf, int nbytes);
+int sim_read_sock_ex (SOCKET sock, char *buf, int nbytes, char **recvaddr);
 int sim_write_sock (SOCKET sock, const char *msg, int nbytes);
+int sim_write_sock_ex (SOCKET sock, const char *msg, int nbytes, char *sendaddr, int opt_flags);
 void sim_close_sock (SOCKET sock);
 const char *sim_get_err_sock (const char *emsg);
 SOCKET sim_err_sock (SOCKET sock, const char *emsg);

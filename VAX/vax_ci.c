@@ -939,8 +939,8 @@ if (blktf_table[src].incomplete == 0) {
     blktf_table[src].start_offset = 0;
     blktf_table[src].incomplete = 1;
 
+    memcpy (blktf_table[src].conf_buf, buffer, 0x2c);
     if (opcode == OPC_SNDDAT) {
-        memcpy (blktf_table[src].conf_buf, buffer, 0x2c);
         blktf_table[src].conf_buf[0xe] = OPC_CNFREC;    /* Set opcode */
         blktf_table[src].conf_buf[0xf] = blktf_table[src].conf_buf[0xf] & ~0x1; /* Clear RSP flag */
         }

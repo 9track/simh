@@ -276,6 +276,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\sim_ipc.c"
+				>
+			</File>
+			<File
 				RelativePath="..\sim_imd.c"
 				>
 			</File>

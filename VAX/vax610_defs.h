@@ -107,6 +107,7 @@
 #define VS_MEMSIZE      (((cpu_unit.capac > QVMBASE) ? QVMBASE : cpu_unit.capac))
 #define MEMSIZE         (cpu_unit.capac)
 #define ADDR_IS_MEM(x)  (((uint32) (x)) < (sys_model ? VS_MEMSIZE : MEMSIZE))
+#define MEM(x)          (M[x])
 #undef  PAMASK
 #define PAMASK          0x203FFFFF                      /* KA610 needs a special mask */
 #define MEM_MODIFIERS   { UNIT_MSIZE, (1u << 19), NULL, "512K", &cpu_set_size, NULL, NULL, "Set Memory to 512K bytes" },\

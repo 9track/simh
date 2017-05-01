@@ -29,11 +29,19 @@
 
 #include "vax_defs.h"
 
+#if defined (VAX_782)
+char sim_name[] = "VAX 11/782";
+#else
 char sim_name[] = "VAX 11/780";
+#endif
 
 void vax_init(void)
 {
+#if defined (VAX_782)
+sim_savename = "VAX782";
+#else
 sim_savename = "VAX780";
+#endif
 }
 
 WEAK void (*sim_vm_init) (void) = &vax_init;
@@ -42,6 +50,9 @@ extern DEVICE cpu_dev;
 extern DEVICE tlb_dev;
 extern DEVICE sbi_dev;
 extern DEVICE mctl_dev[MCTL_NUM];
+#if defined (VAX_782)
+extern DEVICE ma_dev[MA_NUM];
+#endif
 extern DEVICE uba_dev;
 extern DEVICE mba_dev[MBA_NUM];
 extern DEVICE clk_dev;
@@ -72,6 +83,12 @@ DEVICE *sim_devices[] = {
     &sbi_dev,
     &mctl_dev[0],
     &mctl_dev[1],
+#if defined (VAX_782)
+	&ma_dev[0],
+	&ma_dev[1],
+	&ma_dev[2],
+	&ma_dev[3],
+#endif
     &uba_dev,
     &mba_dev[0],
     &mba_dev[1],

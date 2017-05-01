@@ -93,6 +93,12 @@
 
 #define SBIQC_MBZ       0xC0000007                      /* MBZ */
 
+#define BOOT_780        0                               /* booting 11/780 */
+#define BOOT_782PRI     1                               /* booting 11/782 primary */
+#define BOOT_782SEC     2                               /* booting 11/782 secondary */
+
+#define RPB_M_MPM       0x00000800                      /* use multi-port memory */
+
 /* VAX-11/780 boot device definitions */
 
 struct boot_dev {
@@ -111,7 +117,11 @@ uint32 sbi_mt = 0;                                      /* SBI maintenance */
 uint32 sbi_er = 0;                                      /* SBI error status */
 uint32 sbi_tmo = 0;                                     /* SBI timeout addr */
 int32 sys_model = 0;                                    /* 780 or 785 */
+uint32 *MP[PAGE_COUNT] = { 0 };                         /* memory pages */
+uint32 boot_type = BOOT_780;                            /* 780 or 782 */
 static char cpu_boot_cmd[CBUFSIZE]  = { 0 };            /* boot command */
+uint32 nexusM[NEXUS_NUM] = { 0 };
+DEVICE *nexusD[NEXUS_NUM] = { NULL };
 
 static t_stat (*nexusR[NEXUS_NUM])(int32 *dat, int32 ad, int32 md);
 static t_stat (*nexusW[NEXUS_NUM])(int32 dat, int32 ad, int32 md);
@@ -125,6 +135,10 @@ static struct boot_dev boot_tab[] = {
     { "RQC", BOOT_UDA, 1 << 24 },
     { "RQD", BOOT_UDA, 1 << 24 },
     { "CS", BOOT_CS, 0 },
+    { "MA0", 0, 0 },
+    { "MA1", 0, 0 },
+    { "MA2", 0, 0 },
+    { "MA3", 0, 0 },
     { NULL }
     };
 
@@ -634,6 +648,51 @@ strncpy (cpu_boot_cmd, ptr, CBUFSIZE-1);                /* save for reboot */
 return run_cmd (flag, "CPU");
 }
 
+void map_memory (uint32 *pg, uint32 type)
+{
+uint32 off, size, i;
+uint32 *buf;
+DEVICE *dptr;
+
+for (i = 0; i < NEXUS_NUM; i++) {
+    if ((dptr = nexusD[i]) != NULL) {
+        if (!(dptr->flags & DEV_DIS) && (dptr->flags & type)) { /* enabled, match? */
+            nexusM[i] = ((*pg) << PAGE_WIDTH);          /* save start addr */
+            if (dptr->flags & DEV_MEM) {                /* MS780? */
+                buf = &M[(nexusM[i] >> 2)];
+                size = (uint32)(MEMSIZE / MCTL_NUM);    /* size per MS780 */
+                }
+            else if (dptr->flags & DEV_SHM) {           /* MA780? */
+                buf = (uint32 *)dptr->units[0].filebuf; /* get mem ptr */
+                size = (uint32)dptr->units[0].capac;    /* get size of this board */
+                }
+            if (buf == NULL)
+                continue;
+            off = 0;
+            while ((*pg < PAGE_COUNT) && (off < size)) {
+                MP[(*pg)++] = &buf[off >> 2];           /* map this page */
+                off = off + PAGE_SIZE;
+                }
+            }
+        }
+    }
+}
+
+void build_mem_tab (void)
+{
+uint32 pg = 0;
+
+if (boot_type == BOOT_780)                              /* VAX-11/780 boot? */
+    map_memory (&pg, (DEV_MEM | DEV_SHM));              /* map in nexus order */
+else {
+    map_memory (&pg, DEV_SHM);                          /* map MA780s first */
+    map_memory (&pg, DEV_MEM);                          /* map MS780s */
+    }
+
+while (pg < PAGE_COUNT)                                 /* space left? */
+    MP[pg++] = NULL;                                    /* null pages */
+}
+
 /* Parse boot command, set up registers - also used on reset */
 
 t_stat vax780_boot_parse (int32 flag, const char *ptr)
@@ -686,19 +745,30 @@ else
         }
 for (i = 0; boot_tab[i].name != NULL; i++) {
     if (strcmp (dptr->name, boot_tab[i].name) == 0) {
-        R[0] = boot_tab[i].code;
-        if (dptr->flags & DEV_MBUS) {
-            R[1] = ba + TR_MBA0;
-            R[2] = unitno;
+        boot_type = BOOT_780;
+        if (dptr->flags & DEV_SHM) {
+            boot_type = BOOT_782SEC;                    /* map MA780s low */
+            return SCPE_OK;
             }
         else {
-            R[1] = TR_UBA;
-            R[2] = boot_tab[i].let | (ba & UBADDRMASK);
+            R[0] = boot_tab[i].code;
+            if (dptr->flags & DEV_MBUS) {
+                R[1] = ba + TR_MBA0;
+                R[2] = unitno;
+                }
+            else {
+                R[1] = TR_UBA;
+                R[2] = boot_tab[i].let | (ba & UBADDRMASK);
+                }
+            R[3] = unitno;
+            R[4] = 0;
+            R[5] = r5v;
+#if defined (VAX_782)
+            if (r5v & RPB_M_MPM)
+                boot_type = BOOT_782PRI;                /* map MA780s low */
+#endif
+            return SCPE_OK;
             }
-        R[3] = unitno;
-        R[4] = 0;
-        R[5] = r5v;
-        return SCPE_OK;
         }
     }
 return SCPE_NOFNC;
@@ -710,10 +780,17 @@ t_stat cpu_boot (int32 unitno, DEVICE *dptr)
 {
 t_stat r;
 
-r = cpu_load_bootcode (BOOT_CODE_FILENAME, BOOT_CODE_ARRAY, BOOT_CODE_SIZE, FALSE, 0x200);
-if (r != SCPE_OK)
-    return r;
-SP = PC = 512;
+if (boot_type == BOOT_782SEC) {                         /* boot 11/782 sec? */
+    AP = 6;
+    SP = 512;
+    PC = 256;
+    }
+else {
+    r = cpu_load_bootcode (BOOT_CODE_FILENAME, BOOT_CODE_ARRAY, BOOT_CODE_SIZE, FALSE, 0x200);
+    if (r != SCPE_OK)
+        return r;
+    SP = PC = 512;
+    }
 return SCPE_OK;
 }
 
@@ -730,6 +807,9 @@ sbi_mt = 0;
 sbi_er = 0;
 sbi_tmo = 0;
 sim_vm_cmd = vax780_cmd;
+#if defined (VAX_782)
+build_mem_tab ();
+#endif
 return SCPE_OK;
 }
 
@@ -789,6 +869,7 @@ if (dibp->rd)                                           /* set rd dispatch */
     nexusR[idx] = dibp->rd;
 if (dibp->wr)                                           /* set wr dispatch */
     nexusW[idx] = dibp->wr;
+nexusD[idx] = dptr;
 return SCPE_OK;
 }
 

@@ -88,6 +88,8 @@ uint32 mcr_c[MCTL_NUM];
 uint32 mcr_d[MCTL_NUM];
 uint32 rom_lw[MCTL_NUM][ROMSIZE >> 2];
 
+extern uint32 nexusM[NEXUS_NUM];
+
 t_stat mctl_reset (DEVICE *dptr);
 const char *mctl_description (DEVICE *dptr);
 t_stat mctl_rdreg (int32 *val, int32 pa, int32 mode);
@@ -143,7 +145,7 @@ DEVICE mctl_dev[] = {
     1, 16, 16, 1, 16, 8,
     NULL, NULL, &mctl_reset,
     NULL, NULL, NULL,
-    &mctl0_dib, DEV_NEXUS, 0,
+    &mctl0_dib, DEV_NEXUS | DEV_MEM, 0,
     NULL, NULL, NULL, NULL, NULL, NULL, 
     &mctl_description
     },
@@ -152,7 +154,7 @@ DEVICE mctl_dev[] = {
     1, 16, 16, 1, 16, 8,
     NULL, NULL, &mctl_reset,
     NULL, NULL, NULL,
-    &mctl1_dib, DEV_NEXUS, 0,
+    &mctl1_dib, DEV_NEXUS | DEV_MEM, 0,
     NULL, NULL, NULL, NULL, NULL, NULL, 
     &mctl_description
     }
@@ -264,17 +266,23 @@ return;
 
 t_stat mctl_reset (DEVICE *dptr)
 {
+DIB *dib;
 int32 i, amb, akb;
 t_bool extmem = MEMSIZE > MAXMEMSIZE;
 
 amb = (int32) (MEMSIZE / MCTL_NUM) >> 20;               /* array size MB */
 akb = (int32) (MEMSIZE / MCTL_NUM) >> 10;               /* array size KB */
 for (i = 0; i < MCTL_NUM; i++) {                        
+    dib = (DIB *)dptr->ctxt;
     if (extmem)                                         /* Need MS780E? */
         mcr_a[i] = ((amb - 1) << MCRA_V_SIZE) | ((amb <= 16) ? MCRA_E_TYPE_64K : MCRA_E_TYPE_256K);
     else                                                /* Use MS780C */
         mcr_a[i] = (((akb >> 6) - 1) << MCRA_V_SIZE) | ((akb <= 1024) ? MCRA_C_TYPE_4K : MCRA_C_TYPE_16K);
+#if defined (VAX_782)
+    mcr_b[i] = MCRB_INIT | ((nexusM[dib->ba] >> 16) << MCRB_V_SA);
+#else
     mcr_b[i] = MCRB_INIT | ((i * akb) << (MCRB_V_SA - 6));
+#endif
     mcr_c[i] = 0;
     mcr_d[i] = 0;
     }

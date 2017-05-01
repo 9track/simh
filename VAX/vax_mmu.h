@@ -271,7 +271,7 @@ static SIM_INLINE int32 ReadB (uint32 pa)
 int32 dat;
 
 if (ADDR_IS_MEM (pa))
-    dat = M[pa >> 2];
+    dat = MEM(pa >> 2);
 else {
     mchk_ref = REF_V;
     if (ADDR_IS_IO (pa))
@@ -286,7 +286,7 @@ static SIM_INLINE int32 ReadW (uint32 pa)
 int32 dat;
 
 if (ADDR_IS_MEM (pa))
-    dat = M[pa >> 2];
+    dat = MEM(pa >> 2);
 else {
     mchk_ref = REF_V;
     if (ADDR_IS_IO (pa))
@@ -299,7 +299,7 @@ return ((dat >> ((pa & 2)? 16: 0)) & WMASK);
 static SIM_INLINE int32 ReadL (uint32 pa)
 {
 if (ADDR_IS_MEM (pa))
-    return M[pa >> 2];
+    return MEM(pa >> 2);
 mchk_ref = REF_V;
 if (ADDR_IS_IO (pa))
     return ReadIO (pa, L_LONG);
@@ -309,7 +309,7 @@ return ReadReg (pa, L_LONG);
 static SIM_INLINE int32 ReadLP (uint32 pa)
 {
 if (ADDR_IS_MEM (pa))
-    return M[pa >> 2];
+    return MEM(pa >> 2);
 mchk_va = pa;
 mchk_ref = REF_P;
 if (ADDR_IS_IO (pa))
@@ -331,7 +331,7 @@ static SIM_INLINE int32 ReadU (uint32 pa, int32 lnt)
 int32 dat;
 int32 sc = (pa & 3) << 3;
 if (ADDR_IS_MEM (pa))
-    dat = M[pa >> 2];
+    dat = MEM(pa >> 2);
 else {
     mchk_ref = REF_V;
     if (ADDR_IS_IO (pa))
@@ -356,7 +356,7 @@ if (ADDR_IS_MEM (pa)) {
     int32 id = pa >> 2;
     int32 sc = (pa & 3) << 3;
     int32 mask = 0xFF << sc;
-    M[id] = (M[id] & ~mask) | (val << sc);
+    MEM(id) = (MEM(id) & ~mask) | (val << sc);
     }
 else {
     mchk_ref = REF_V;
@@ -371,8 +371,8 @@ static SIM_INLINE void WriteW (uint32 pa, int32 val)
 {
 if (ADDR_IS_MEM (pa)) {
     int32 id = pa >> 2;
-    M[id] = (pa & 2)? (M[id] & 0xFFFF) | (val << 16):
-        (M[id] & ~0xFFFF) | val;
+    MEM(id) = (pa & 2)? (MEM(id) & 0xFFFF) | (val << 16):
+        (MEM(id) & ~0xFFFF) | val;
     }
 else {
     mchk_ref = REF_V;
@@ -386,7 +386,7 @@ return;
 static SIM_INLINE void WriteL (uint32 pa, int32 val)
 {
 if (ADDR_IS_MEM (pa))
-    M[pa >> 2] = val;
+    MEM(pa >> 2) = val;
 else {
     mchk_ref = REF_V;
     if (ADDR_IS_IO (pa))
@@ -399,7 +399,7 @@ return;
 static SIM_INLINE void WriteLP (uint32 pa, int32 val)
 {
 if (ADDR_IS_MEM (pa))
-    M[pa >> 2] = val;
+    MEM(pa >> 2) = val;
 else {
     mchk_va = pa;
     mchk_ref = REF_P;
@@ -425,7 +425,7 @@ static SIM_INLINE void WriteU (uint32 pa, int32 val, int32 lnt)
 if (ADDR_IS_MEM (pa)) {
     int32 bo = pa & 3;
     int32 sc = bo << 3;
-    M[pa >> 2] = (M[pa >> 2] & ~(insert[lnt] << sc)) | ((val & insert[lnt]) << sc);
+    MEM(pa >> 2) = (MEM(pa >> 2) & ~(insert[lnt] << sc)) | ((val & insert[lnt]) << sc);
     }
 else {
     mchk_ref = REF_V;

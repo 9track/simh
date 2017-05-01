@@ -8,8 +8,9 @@
 
 #### Matt Burke has implemented new VAX model simulators:
 
-    VAX/11 730
-    VAX/11 750
+    VAX-11/730
+    VAX-11/750
+    VAX-11/782
     VAX 8600/8650
     MicroVAX I & VAXStation I
     MicroVAX II & VAXStation II

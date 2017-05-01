@@ -93,10 +93,15 @@
 
 #define NEXUS_NUM       16                              /* number of nexus */
 #define MCTL_NUM        2                               /* number of mem ctrl */
+#define MA_NUM          4                               /* number of multiport mem ctrl */
 #define MBA_NUM         2                               /* number of MBA's */
 #define TR_MCTL0        1                               /* nexus assignments */
 #define TR_MCTL1        2
 #define TR_UBA          3
+#define TR_MA0          4
+#define TR_MA1          5
+#define TR_MA2          6
+#define TR_MA3          7
 #define TR_MBA0         8
 #define TR_MBA1         9
 #define NEXUS_HLVL      (IPL_HMAX - IPL_HMIN + 1)
@@ -113,6 +118,10 @@
 #define IPL_UBA         (0x15 - IPL_HMIN)
 #define IPL_MBA0        (0x15 - IPL_HMIN)
 #define IPL_MBA1        (0x15 - IPL_HMIN)
+#define IPL_MA0         (0x14 - IPL_HMIN)
+#define IPL_MA1         (0x14 - IPL_HMIN)
+#define IPL_MA2         (0x14 - IPL_HMIN)
+#define IPL_MA3         (0x14 - IPL_HMIN)
 
 /* Nexus interrupt macros */
 
@@ -160,13 +169,27 @@
 
 /* Memory */
 
+#define PAGE_WIDTH      18                              /* memory pages */
+#define PAGE_SIZE       (1u << PAGE_WIDTH)
+#define PAGE_MASK       (PAGE_SIZE - 1)
+#define PAGE_COUNT      (MAXMEMSIZE_X >> PAGE_WIDTH)
+#define PAGE_LWIDTH     16                              /* memory pages */
+#define PAGE_LSIZE      (1u << PAGE_LWIDTH)
+#define PAGE_LMASK      (PAGE_LSIZE - 1)
+
 #define MAXMEMWIDTH     23                              /* max mem, MS780C */
 #define MAXMEMSIZE      (1 << MAXMEMWIDTH)
 #define MAXMEMWIDTH_X   27                              /* max mem, MS780E */
 #define MAXMEMSIZE_X    (1 << MAXMEMWIDTH_X)
 #define INITMEMSIZE     (1 << MAXMEMWIDTH)              /* initial memory size */
 #define MEMSIZE         (cpu_unit.capac)
+#if defined (VAX_782)
+#define ADDR_IS_MEM(x)  (((x >> PAGE_WIDTH) < PAGE_COUNT) ? (MP[x >> PAGE_WIDTH] != NULL) : 0)
+#define MEM(x)          (MP[(x >> PAGE_LWIDTH)][(x & PAGE_LMASK)])
+#else
 #define ADDR_IS_MEM(x)  (((uint32) (x)) < MEMSIZE)
+#define MEM(x)          (M[x])
+#endif
 #define MEM_MODIFIERS   { UNIT_MSIZE, (1u << 20), NULL, "1M", &cpu_set_size, NULL, NULL, "Set Memory to 1M bytes" },                \
                         { UNIT_MSIZE, (1u << 21), NULL, "2M", &cpu_set_size, NULL, NULL, "Set Memory to 2M bytes" },                \
                         { UNIT_MSIZE, (1u << 22), NULL, "4M", &cpu_set_size, NULL, NULL, "Set Memory to 4M bytes" },                \
@@ -181,6 +204,8 @@ extern t_stat cpu_show_memory (FILE* st, UNIT* uptr, int32 val, CONST void* desc
 #define CPU_MODEL_MODIFIERS                                                                     \
                         { MTAB_XTD|MTAB_VDV, 0, "MODEL", "MODEL={780|785}",                     \
                           &cpu_set_model, &cpu_show_model, NULL, "Set/Show the simulator CPU Model" }
+
+extern uint32 *MP[PAGE_COUNT];
 
 /* Unibus I/O registers */
 
@@ -264,10 +289,14 @@ extern t_stat cpu_show_memory (FILE* st, UNIT* uptr, int32 val, CONST void* desc
 #define DEV_V_UBUS      (DEV_V_UF + 0)                  /* Unibus */
 #define DEV_V_MBUS      (DEV_V_UF + 1)                  /* Massbus */
 #define DEV_V_NEXUS     (DEV_V_UF + 2)                  /* Nexus */
-#define DEV_V_FFUF      (DEV_V_UF + 3)                  /* first free flag */
+#define DEV_V_MEM       (DEV_V_UF + 3)                  /* memory */
+#define DEV_V_SHM       (DEV_V_UF + 4)                  /* Shared memory */
+#define DEV_V_FFUF      (DEV_V_UF + 5)                  /* first free flag */
 #define DEV_UBUS        (1u << DEV_V_UBUS)
 #define DEV_MBUS        (1u << DEV_V_MBUS)
 #define DEV_NEXUS       (1u << DEV_V_NEXUS)
+#define DEV_MEM         (1u << DEV_V_MEM)
+#define DEV_SHM         (1u << DEV_V_SHM)
 #define DEV_QBUS        (0)
 #define DEV_Q18         (0)
 

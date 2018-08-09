@@ -244,6 +244,15 @@ extern t_stat cpu_show_memory (FILE* st, UNIT* uptr, int32 val, CONST void* desc
                          (((uint32) (x)) < (QVMBASE + QVMSIZE)))
 extern uint32 *vc_buf;
 
+/* CIQBA memory space */
+
+#define CIMAWIDTH       15                              /* CIQBA mem addr width */
+#define CIMSIZE         (1u << CIMAWIDTH)               /* CIQBA mem length */
+#define CIMAMASK        (CIMSIZE - 1)                   /* CIQBA mem addr mask */
+#define CIMBASE         (CQMBASE)                       /* CIQBA mem base */
+#define ADDR_IS_CIM(x)  ((((uint32) (x)) >= CIMBASE) && \
+                        (((uint32) (x)) < (CIMBASE + CIMSIZE)))
+
 /* Machine specific reserved operand tests (mostly NOPs) */
 
 #define ML_PA_TEST(r)
@@ -370,6 +379,7 @@ typedef struct {
 #define INT_V_DMCTX     23
 #define INT_V_TDRX      24                              /* TU58 */
 #define INT_V_TDTX      25
+#define INT_V_CI        26                              /* CIQBA */
 
 #define INT_CLK         (1u << INT_V_CLK)
 #define INT_RQ          (1u << INT_V_RQ)
@@ -398,6 +408,7 @@ typedef struct {
 #define INT_DMCTX       (1u << INT_V_DMCTX)
 #define INT_TDRX        (1u << INT_V_TDRX)
 #define INT_TDTX        (1u << INT_V_TDTX)
+#define INT_CI          (1u << INT_V_CI)
 
 #define IPL_CLK         (0x16 - IPL_HMIN)                       /* relative IPL */
 #define IPL_RQ          (0x14 - IPL_HMIN)
@@ -426,6 +437,7 @@ typedef struct {
 #define IPL_DMCTX       (0x14 - IPL_HMIN)
 #define IPL_TDRX        (0x14 - IPL_HMIN)
 #define IPL_TDTX        (0x14 - IPL_HMIN)
+#define IPL_CI          (0x14 - IPL_HMIN)
 
 #define IPL_HMAX        0x17                            /* highest hwre level */
 #define IPL_HMIN        0x14                            /* lowest hwre level */

@@ -39,6 +39,7 @@
 */
 struct ROM_File_Descriptor {
     const char *BinaryName;             const char *IncludeFileName; size_t expected_size; unsigned int checksum;  const char *ArrayName;            const char *Comments;} ROMs[] = {
+   {"VAX/ciqba_pra0.bin",               "VAX/ciqba_pra0_bin.h",                     32768,            0xFFE2348A,        "ciqba_pra0_bin"},
    {"VAX/ka655x.bin",                   "VAX/vax_ka655x_bin.h",                    131072,            0xFF7672D5,        "vax_ka655x_bin"},
    {"VAX/ka620.bin",                    "VAX/vax_ka620_bin.h",                      65536,            0xFF7F930F,        "vax_ka620_bin"},
    {"VAX/ka630.bin",                    "VAX/vax_ka630_bin.h",                      65536,            0xFF7F73EF,        "vax_ka630_bin"},

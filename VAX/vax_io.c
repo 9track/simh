@@ -117,6 +117,7 @@ int32 cq_ipc = 0;                                       /* IPC */
 int32 autcon_enb = 1;                                   /* autoconfig enable */
 
 extern int32 ssc_bto;
+extern int32 ci_mem_rd (int32 pa);
 extern int32 vc_mem_rd (int32 pa);
 extern void vc_mem_wr (int32 pa, int32 val, int32 mode);
 
@@ -623,6 +624,10 @@ if (qba_map_addr (qa, &ma)) {                           /* in map? */
     }                                                   /* end if mapped */
 if (ADDR_IS_QVM(pa)) {                                  /* QVSS memory? */
     *dat = vc_mem_rd (pa);
+    return SCPE_OK;
+    }
+if (ADDR_IS_CIM(pa)) {                                  /* CIQBA memory? */
+    *dat = ci_mem_rd (pa);
     return SCPE_OK;
     }
 MACH_CHECK (MCHK_READ);                                 /* err? mcheck */

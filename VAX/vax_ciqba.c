@@ -81,7 +81,7 @@
 #define CSR_ERROR            0x8000
 
 #define CIS_DATA             0x7FFF
-#define CIS_OP_COMPLETE      0x8000
+#define CIS_OP_COMPLETE      0x80000000
 
 /* Ring entry */
 
@@ -95,13 +95,15 @@
 #define IOBA_CI              (IOPAGEBASE + 0xE00)
 #define IOLN_CI              0x80
 
-uint32 ci_vtba = 0;
-uint16 ci_vtbs = 0;
+uint16 ci_csr = 0;                                      /* status register */
+uint32 ci_vtba = 0;                                     /* VTB address */
+uint32 ci_vtbd = 0;                                     /* VTB data */
+uint16 ci_nvr[0x20] = { 0 };
 
 t_stat ci_rd (int32 *data, int32 PA, int32 access);
 t_stat ci_wr (int32 data, int32 PA, int32 access);
-int32 ci_vtb_rd (void);
-void ci_vtb_wr (void);
+int32 ci_vtb_rd (int32 pa);
+void ci_vtb_wr (int32 pa, int32 data);
 t_stat ci_svc (UNIT *uptr);
 t_stat ci_reset (DEVICE *dptr);
 int32 ci_inta (void);
@@ -165,6 +167,7 @@ switch (rg) {
         break;
 
     case CI_STATUS_REG:
+        *data = ci_csr;
         break;
 
     case CI_INTERRUPT_VEC:
@@ -177,13 +180,15 @@ switch (rg) {
         break;
 
     case CI_MEM_ADDR_LO:
+        *data = ci_vtba & 0xFFFF;
         break;
 
     case CI_MEM_ADDR_HI:
-        ci_vtbs &= ~CIS_OP_COMPLETE;
+        *data = (ci_vtba >> 16) & 0xFFFF;
         break;
 
     case CI_MEM_DATA:
+        *data = ci_vtbd;
         break;
 
     default:
@@ -211,10 +216,26 @@ sim_debug (DBG_REG, &ci_dev, "ci_wr: %08X = %04X at %08X\n", PA, data, fault_PC)
 switch (rg) {
 
     case CI_CONTROL_REG:
-        if (data & CCR_READ_MEMORY)
-            ci_vtb_rd ();
-        else if (data & CCR_WRITE_MEMORY)
-            ci_vtb_wr ();
+        if (data & CCR_READ_MEMORY) {
+            ci_vtbd = ci_vtb_rd (ci_vtba);
+            ci_vtba |= CIS_OP_COMPLETE;
+            }
+        else if (data & CCR_WRITE_MEMORY) {
+            ci_vtb_wr (ci_vtba, ci_vtbd);
+            ci_vtba |= CIS_OP_COMPLETE;
+            }
+        else if (data & CCR_WRITE_EEPROM)
+            ci_vtba |= CIS_OP_COMPLETE;
+        else if (data & CCR_INITIALIZE)
+            ci_csr |= CSR_INITIALIZED;
+        else if (data & CCR_START)
+            ci_csr |= CSR_RUNNING;
+        else if (data & CCR_RUNDOWN)
+            ci_csr &= ~CSR_RUNNING;
+        else if (data & CCR_HALT) {
+            ci_csr &= ~CSR_INITIALIZED;
+            ci_csr &= ~CSR_RUNNING;
+            }
         break;
 
     case CI_STATUS_REG:
@@ -240,6 +261,7 @@ switch (rg) {
         break;
 
     case CI_MEM_DATA:
+        ci_vtbd = data;
         break;
 
     default:
@@ -258,17 +280,26 @@ switch (rg) {
 return SCPE_OK;
 }
 
-int32 ci_vtb_rd ()
+int32 ci_vtb_rd (int32 pa)
 {
-ci_vtbs |= CIS_OP_COMPLETE;
-sim_debug (DBG_REG, &ci_dev, "ci_vtb_rd: %08X = %04X at %08X\n", ci_vtba, 0, fault_PC);
-return 0;
+int32 rg;
+int32 data = 0;
+if ((pa >= 0x178000) && (pa < 0x178020)) {               /* NovRam */
+    rg = (pa >> 1) & 0xF;
+    data = ci_nvr[rg];
+    }
+sim_debug (DBG_REG, &ci_dev, "ci_vtb_rd: %08X = %04X at %08X\n", pa, data, fault_PC);
+return data;
 }
 
-void ci_vtb_wr ()
+void ci_vtb_wr (int32 pa, int32 data)
 {
-sim_debug (DBG_REG, &ci_dev, "ci_vtb_wr: %08X = %04X at %08X\n", ci_vtba, 0, fault_PC);
-ci_vtbs |= CIS_OP_COMPLETE;
+int32 rg;
+sim_debug (DBG_REG, &ci_dev, "ci_vtb_wr: %08X = %04X at %08X\n", pa, data, fault_PC);
+if ((pa >= 0x178000) && (pa < 0x178020)) {               /* NovRam */
+    rg = (pa >> 1) & 0xF;
+    ci_nvr[rg] = data;
+    }
 }
 
 int32 ci_mem_rd (int32 pa)
@@ -294,8 +325,9 @@ return 0;
 
 t_stat ci_reset (DEVICE *dptr)
 {
+ci_csr = 0;
 ci_vtba = 0;
-ci_vtbs = 0;
+ci_vtbd = 0;
 CLR_INT (CI);
 return SCPE_OK;
 }

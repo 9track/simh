@@ -83,11 +83,20 @@
 #define CIS_DATA             0x7FFF
 #define CIS_OP_COMPLETE      0x80000000
 
+#define CIS_RECEIVE_RING_ENTRIES     8
+#define CIS_DISPOSE_RING_ENTRIES     8
+#define CIS_SEND_LO_RING_ENTRIES     8
+#define CIS_SEND_HI_RING_ENTRIES     4
+
+#define CI_SIZE              0x40                       /* NVR size */
+
 /* Ring entry */
 
 #define RENT_ADDR_LO         0x0000FFFF
 #define RENT_ADDR_HI         0x003F0000
+#define RENT_ADDR            0x003FFFFF
 #define RENT_XMIT_FAIL       0x00400000
+#define RENT_V_LENGTH        22
 #define RENT_LENGTH          0x3FC00000
 #define RENT_PACKET_TYPE     0x40000000
 #define RENT_CIQBA_OWNED     0x80000000
@@ -99,6 +108,10 @@ uint16 ci_csr = 0;                                      /* status register */
 uint32 ci_vtba = 0;                                     /* VTB address */
 uint32 ci_vtbd = 0;                                     /* VTB data */
 uint16 ci_nvr[0x20] = { 0 };
+uint16 ci_rcv[CIS_RECEIVE_RING_ENTRIES * 2] = { 0 };
+uint16 ci_dsp[CIS_DISPOSE_RING_ENTRIES * 2] = { 0 };
+uint16 ci_sndl[CIS_SEND_LO_RING_ENTRIES * 2] = { 0 };
+uint16 ci_sndh[CIS_SEND_HI_RING_ENTRIES * 2] = { 0 };
 
 t_stat ci_rd (int32 *data, int32 PA, int32 access);
 t_stat ci_wr (int32 data, int32 PA, int32 access);
@@ -121,7 +134,7 @@ DIB ci_dib = {
     1, IVCL (CI), 0, { &ci_inta }
     };
 
-UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
+UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, CI_SIZE) };
 
 REG ci_reg[] = {
     { NULL }
@@ -148,7 +161,7 @@ DEBTAB ci_debug[] = {
 
 DEVICE ci_dev = {
     "CI", &ci_unit, ci_reg, ci_mod,
-    1, 0, 0, 0, 0, 0,
+    1, DEV_RDX, 20, 1, DEV_RDX, 16,
     NULL, NULL, &ci_reset,
     NULL, NULL, NULL,
     &ci_dib, DEV_QBUS | DEV_DEBUG, 0,
@@ -192,16 +205,25 @@ switch (rg) {
         break;
 
     default:
-        if (rg > CI_RECEIVE_RING)
+        if (rg >= CI_RECEIVE_RING) {
+            rg = rg - CI_RECEIVE_RING;
+            *data = ci_rcv[rg];
             break;
-
-        if (rg > CI_DISPOSE_RING)
+            }
+        if (rg >= CI_DISPOSE_RING) {
+            rg = rg - CI_DISPOSE_RING;
+            *data = ci_dsp[rg];
             break;
-
-        if (rg > CI_SEND_LO_RING)
+            }
+        if (rg >= CI_SEND_LO_RING) {
+            rg = rg - CI_SEND_LO_RING;
+            *data = ci_sndl[rg];
             break;
-
-        if (rg > CI_SEND_HI_RING)
+            }
+        if (rg >= CI_SEND_HI_RING) {
+            rg = rg - CI_SEND_HI_RING;
+            *data = ci_sndh[rg];
+            }
             break;
         }
 sim_debug (DBG_REG, &ci_dev, "ci_rd: %08X = %04X at %08X\n", PA, *data, fault_PC);
@@ -210,6 +232,8 @@ sim_debug (DBG_REG, &ci_dev, "ci_rd: %08X = %04X at %08X\n", PA, *data, fault_PC
 t_stat ci_wr (int32 data, int32 PA, int32 access)
 {
 int32 rg = (PA >> 1) &  0x3F;
+uint32 entry, addr, length, i, j;
+uint8 pkt[1024];
 
 sim_debug (DBG_REG, &ci_dev, "ci_wr: %08X = %04X at %08X\n", PA, data, fault_PC);
     
@@ -235,6 +259,62 @@ switch (rg) {
         else if (data & CCR_HALT) {
             ci_csr &= ~CSR_INITIALIZED;
             ci_csr &= ~CSR_RUNNING;
+            }
+        else if (data & CCR_SEND_HI_ATTN) {
+            sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_HI_ATTN\n");
+            for (i = 0; i < CIS_SEND_HI_RING_ENTRIES; i++) {
+                entry = ci_sndh[i*2] | (ci_sndh[i*2+1] << 16);
+                sim_debug (DBG_REG, &ci_dev, "ci_sndh: entry[%d] = %08X\n", i, entry);
+                if (entry & RENT_CIQBA_OWNED) {
+                    addr = entry & RENT_ADDR;
+                    length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
+                    length = (length << 2);
+                    sim_debug (DBG_REG, &ci_dev, "ci_sndh: addr = %X, length = %X\n", addr, length);
+                    if (length > 1024)
+                        length = 1024;
+                    Map_ReadB (addr, length, &pkt[0]);
+                    for (j = 0; j < length; j++) {
+                        if ((j % 4) == 0)
+                            sim_debug (DBG_REG, &ci_dev, "\n");
+                        sim_debug (DBG_REG, &ci_dev, "%02X ", pkt[j ^ 3]);
+                        }
+                    sim_debug (DBG_REG, &ci_dev, "\n");
+                    //entry = entry & ~RENT_CIQBA_OWNED;
+                    entry = entry & RENT_ADDR;
+                    ci_sndh[i] = entry & 0xFFFF;
+                    ci_sndh[i+1] = (entry >> 16) & 0xFFFF;
+                    ci_dsp[0] = entry & 0xFFFF;
+                    ci_dsp[1] = (entry >> 16) & 0xFFFF;
+                    }
+                }
+            }
+        else if (data & CCR_SEND_LO_ATTN) {
+            sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_LO_ATTN\n");
+            for (i = 0; i < CIS_SEND_LO_RING_ENTRIES; i++) {
+                entry = ci_sndl[i*2] | (ci_sndl[i*2+1] << 16);
+                sim_debug (DBG_REG, &ci_dev, "ci_sndh: entry[%d] = %08X\n", i, entry);
+                if (entry & RENT_CIQBA_OWNED) {
+                    addr = entry & RENT_ADDR;
+                    length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
+                    length = (length << 2);
+                    sim_debug (DBG_REG, &ci_dev, "ci_sndl: addr = %X, length = %X\n", addr, length);
+                    if (length > 1024)
+                        length = 1024;
+                    Map_ReadB (addr, length, &pkt[0]);
+                    for (j = 0; j < length; j++) {
+                        if ((j % 4) == 0)
+                            sim_debug (DBG_REG, &ci_dev, "\n");
+                        sim_debug (DBG_REG, &ci_dev, "%02X ", pkt[j]);
+                        }
+                    sim_debug (DBG_REG, &ci_dev, "\n");
+                    //entry = entry & ~RENT_CIQBA_OWNED;
+                    entry = entry & RENT_ADDR;
+                    ci_sndl[i] = entry & 0xFFFF;
+                    ci_sndl[i+1] = (entry >> 16) & 0xFFFF;
+                    ci_dsp[0] = entry & 0xFFFF;
+                    ci_dsp[1] = (entry >> 16) & 0xFFFF;
+                    }
+                }
             }
         break;
 
@@ -265,16 +345,29 @@ switch (rg) {
         break;
 
     default:
-        if (rg > CI_RECEIVE_RING)
+        if (rg >= CI_RECEIVE_RING) {
+            rg = rg - CI_RECEIVE_RING;
+            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_rcv[%d] = %04X\n", rg, data);
+            ci_rcv[rg] = data;
             break;
-
-        if (rg > CI_DISPOSE_RING)
+            }
+        if (rg >= CI_DISPOSE_RING) {
+            rg = rg - CI_DISPOSE_RING;
+            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_dsp[%d] = %04X\n", rg, data);
+            ci_dsp[rg] = data;
             break;
-
-        if (rg > CI_SEND_LO_RING)
+            }
+        if (rg >= CI_SEND_LO_RING) {
+            rg = rg - CI_SEND_LO_RING;
+            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndl[%d] = %04X\n", rg, data);
+            ci_sndl[rg] = data;
             break;
-
-        if (rg > CI_SEND_HI_RING)
+            }
+        if (rg >= CI_SEND_HI_RING) {
+            rg = rg - CI_SEND_HI_RING;
+            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndh[%d] = %04X\n", rg, data);
+            ci_sndh[rg] = data;
+            }
             break;
         }
 return SCPE_OK;
@@ -284,9 +377,11 @@ int32 ci_vtb_rd (int32 pa)
 {
 int32 rg;
 int32 data = 0;
+uint16 *nvr = (uint16 *) ci_unit.filebuf;
+
 if ((pa >= 0x178000) && (pa < 0x178020)) {               /* NovRam */
     rg = (pa >> 1) & 0xF;
-    data = ci_nvr[rg];
+    data = nvr[rg];
     }
 sim_debug (DBG_REG, &ci_dev, "ci_vtb_rd: %08X = %04X at %08X\n", pa, data, fault_PC);
 return data;
@@ -295,10 +390,13 @@ return data;
 void ci_vtb_wr (int32 pa, int32 data)
 {
 int32 rg;
+uint16 *nvr = (uint16 *) ci_unit.filebuf;
+
 sim_debug (DBG_REG, &ci_dev, "ci_vtb_wr: %08X = %04X at %08X\n", pa, data, fault_PC);
 if ((pa >= 0x178000) && (pa < 0x178020)) {               /* NovRam */
     rg = (pa >> 1) & 0xF;
-    ci_nvr[rg] = data;
+    nvr[rg] = data;
+    ci_unit.hwmark = (rg << 1);
     }
 }
 

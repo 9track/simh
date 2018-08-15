@@ -88,7 +88,8 @@
 #define CIS_SEND_LO_RING_ENTRIES     8
 #define CIS_SEND_HI_RING_ENTRIES     4
 
-#define CI_SIZE              0x40                       /* NVR size */
+#define VTB_NVR_BASE         0x178000
+#define VTB_NVR_SIZE         0x200                      /* NVR size */
 
 /* Ring entry */
 
@@ -134,7 +135,7 @@ DIB ci_dib = {
     1, IVCL (CI), 0, { &ci_inta }
     };
 
-UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, CI_SIZE) };
+UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, VTB_NVR_SIZE) };
 
 REG ci_reg[] = {
     { NULL }
@@ -262,59 +263,11 @@ switch (rg) {
             }
         else if (data & CCR_SEND_HI_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_HI_ATTN\n");
-            for (i = 0; i < CIS_SEND_HI_RING_ENTRIES; i++) {
-                entry = ci_sndh[i*2] | (ci_sndh[i*2+1] << 16);
-                sim_debug (DBG_REG, &ci_dev, "ci_sndh: entry[%d] = %08X\n", i, entry);
-                if (entry & RENT_CIQBA_OWNED) {
-                    addr = entry & RENT_ADDR;
-                    length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
-                    length = (length << 2);
-                    sim_debug (DBG_REG, &ci_dev, "ci_sndh: addr = %X, length = %X\n", addr, length);
-                    if (length > 1024)
-                        length = 1024;
-                    Map_ReadB (addr, length, &pkt[0]);
-                    for (j = 0; j < length; j++) {
-                        if ((j % 4) == 0)
-                            sim_debug (DBG_REG, &ci_dev, "\n");
-                        sim_debug (DBG_REG, &ci_dev, "%02X ", pkt[j ^ 3]);
-                        }
-                    sim_debug (DBG_REG, &ci_dev, "\n");
-                    //entry = entry & ~RENT_CIQBA_OWNED;
-                    entry = entry & RENT_ADDR;
-                    ci_sndh[i] = entry & 0xFFFF;
-                    ci_sndh[i+1] = (entry >> 16) & 0xFFFF;
-                    ci_dsp[0] = entry & 0xFFFF;
-                    ci_dsp[1] = (entry >> 16) & 0xFFFF;
-                    }
-                }
+            ci_svc_queue (CIS_SEND_HI);
             }
         else if (data & CCR_SEND_LO_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_LO_ATTN\n");
-            for (i = 0; i < CIS_SEND_LO_RING_ENTRIES; i++) {
-                entry = ci_sndl[i*2] | (ci_sndl[i*2+1] << 16);
-                sim_debug (DBG_REG, &ci_dev, "ci_sndh: entry[%d] = %08X\n", i, entry);
-                if (entry & RENT_CIQBA_OWNED) {
-                    addr = entry & RENT_ADDR;
-                    length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
-                    length = (length << 2);
-                    sim_debug (DBG_REG, &ci_dev, "ci_sndl: addr = %X, length = %X\n", addr, length);
-                    if (length > 1024)
-                        length = 1024;
-                    Map_ReadB (addr, length, &pkt[0]);
-                    for (j = 0; j < length; j++) {
-                        if ((j % 4) == 0)
-                            sim_debug (DBG_REG, &ci_dev, "\n");
-                        sim_debug (DBG_REG, &ci_dev, "%02X ", pkt[j]);
-                        }
-                    sim_debug (DBG_REG, &ci_dev, "\n");
-                    //entry = entry & ~RENT_CIQBA_OWNED;
-                    entry = entry & RENT_ADDR;
-                    ci_sndl[i] = entry & 0xFFFF;
-                    ci_sndl[i+1] = (entry >> 16) & 0xFFFF;
-                    ci_dsp[0] = entry & 0xFFFF;
-                    ci_dsp[1] = (entry >> 16) & 0xFFFF;
-                    }
-                }
+            ci_svc_queue (CIS_SEND_LO);
             }
         break;
 
@@ -379,7 +332,7 @@ int32 rg;
 int32 data = 0;
 uint16 *nvr = (uint16 *) ci_unit.filebuf;
 
-if ((pa >= 0x178000) && (pa < 0x178020)) {               /* NovRam */
+if ((pa >= VTB_NVR_BASE) && (pa < VTB_NVR_BASE+VTB_NVR_SIZE)) { /* NovRam */
     rg = (pa >> 1) & 0xF;
     data = nvr[rg];
     }
@@ -393,7 +346,7 @@ int32 rg;
 uint16 *nvr = (uint16 *) ci_unit.filebuf;
 
 sim_debug (DBG_REG, &ci_dev, "ci_vtb_wr: %08X = %04X at %08X\n", pa, data, fault_PC);
-if ((pa >= 0x178000) && (pa < 0x178020)) {               /* NovRam */
+if ((pa >= VTB_NVR_BASE) && (pa < VTB_NVR_BASE+VTB_NVR_SIZE)) { /* NovRam */
     rg = (pa >> 1) & 0xF;
     nvr[rg] = data;
     ci_unit.hwmark = (rg << 1);
@@ -407,6 +360,147 @@ return (ciqba_pra0_bin[rg] |
        (ciqba_pra0_bin[rg+1] << 8) |
        (ciqba_pra0_bin[rg+2] << 16) |
        (ciqba_pra0_bin[rg+3] << 24));
+}
+
+t_stat ci_dequeue (uint32 queue, CI_PKT *pkt)
+{
+uint32 entries, entry;
+uint16 *ring;
+
+switch (queue) {
+    case CIS_SEND_HI:
+        entries = CIS_SEND_HI_RING_ENTRIES;
+        ring = &ci_sndh[0];
+        break;
+
+    case CIS_SEND_LO:
+        entries = CIS_SEND_LO_RING_ENTRIES;
+        ring = &ci_sndl[0];
+        break;
+
+    case CIS_DISPOSE::
+        entries = CIS_DISPOSE_RING_ENTRIES;
+        ring = &ci_dsp[0];
+        break;
+
+    case CIS_RECEIVE:
+        entries = CIS_RECEIVE_RING_ENTRIES;
+        ring = &ci_rcv[0];
+        break;
+        }
+for (i = 0; i < entries; i++) {
+    entry = ring[i*2] | (ring[i*2+1] << 16);  // May need a macro?
+    sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
+    if (entry & RENT_CIQBA_OWNED) {
+        pkt->addr = entry & RENT_ADDR;
+        pkt->length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
+        pkt->length = (pkt->length << 2);
+        sim_debug (DBG_REG, &ci_dev, "ci_dequeue: addr = %X, length = %X\n", pkt->addr, pkt->length);
+        entry = entry & RENT_ADDR;
+        ring[i] = entry & 0xFFFF;  // Also may need a macro
+        ring[i+1] = (entry >> 16) & 0xFFFF;
+        return SCPE_OK;
+        }
+    }
+return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
+}
+
+t_stat ci_enqueue (uint32 queue, CI_PKT *pkt)
+{
+uint32 entries, entry;
+uint16 *ring;
+
+switch (queue) {
+    case CIS_SEND_HI:
+        entries = CIS_SEND_HI_RING_ENTRIES;
+        ring = &ci_sndh[0];
+        break;
+
+    case CIS_SEND_LO:
+        entries = CIS_SEND_LO_RING_ENTRIES;
+        ring = &ci_sndl[0];
+        break;
+
+    case CIS_DISPOSE::
+        entries = CIS_DISPOSE_RING_ENTRIES;
+        ring = &ci_dsp[0];
+        break;
+
+    case CIS_RECEIVE:
+        entries = CIS_RECEIVE_RING_ENTRIES;
+        ring = &ci_rcv[0];
+        break;
+        }
+for (i = 0; i < entries; i++) {
+    entry = ring[i*2] | (ring[i*2+1] << 16);  // May need a macro?
+    sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
+    if (entry & RENT_CIQBA_OWNED) {
+        pkt->addr = entry & RENT_ADDR;
+        pkt->length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
+        pkt->length = (pkt->length << 2);
+        sim_debug (DBG_REG, &ci_dev, "ci_dequeue: addr = %X, length = %X\n", pkt->addr, pkt->length);
+        entry = entry & RENT_ADDR;
+        ring[i] = entry & 0xFFFF;  // Also may need a macro
+        ring[i+1] = (entry >> 16) & 0xFFFF;
+        return SCPE_OK;
+        }
+    }
+return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
+}
+
+t_stat ci_put_dfq (CI_PKT *pkt)
+{
+    // Put to dispose queue
+    return ci_enqueue (CIS_DISPOSE, pkt);
+}
+
+t_stat ci_put_mfq (CI_PKT *pkt)
+{
+    // Put to dispose queue
+    return ci_enqueue (CIS_DISPOSE, pkt);
+}
+
+t_stat ci_put_rsq (CI_PKT *pkt)
+{
+    // Put to receive queue
+    return ci_enqueue (CIS_RECEIVE, pkt);
+}
+
+t_stat ci_get_dfq (CI_PKT *pkt)
+{
+    // Get from receive queue?
+    return ci_dequeue (CIS_RECEIVE, pkt);
+}
+
+t_stat ci_get_mfq (CI_PKT *pkt)
+{
+    // Get from receive queue?
+    return ci_dequeue (CIS_RECEIVE, pkt);
+}
+
+t_stat ci_svc_queue (uint32 queue)
+{
+t_stat r;
+while (ci_dequeue (queue, pkt) == SCPE_OK) {
+    r = ci_ppd (pkt);
+    if (r != SCPE_OK)
+        break;
+    }
+return r;
+}
+
+t_stat ci_read_packet (CI_PKT *pkt)
+{
+if (Map_ReadB (pkt->addr, pkt->length, &pkt->data[0]))
+    return SCPE_EOF;  // Need own status codes
+return SCPE_OK;
+}
+
+t_stat ci_write_packet (CI_PKT *pkt)
+{
+if (Map_WriteB (pkt->addr, pkt->length, &pkt->data[0]))
+    return SCPE_EOF;
+return SCPE_OK;
 }
 
 t_stat ci_svc (UNIT *uptr)

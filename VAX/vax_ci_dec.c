@@ -119,6 +119,10 @@ uint32 ci_pesr;                                         /* port error status */
 uint32 ci_ppr;                                          /* port parameter reg */
 GVPMMU ci_mmu;                                          /* memory management unit */
 
+void ci_readb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
+void ci_writeb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
+void ci_read_pqb (uint32 pa);
+
 t_stat ci_port_command (int32 queue)
 {
 int32 status, msg_type;
@@ -317,6 +321,87 @@ ci_mmu.slr = (ci_mmu.slr << 2) + 0x1000000;             /* VA<31> >> 7 */
 ci_mmu.gbr = CI_ReadL (pa + PQB_GPT_OF);
 ci_mmu.glr = CI_ReadL (pa + PQB_GLR_OF);
 ci_mmu.glr = (ci_mmu.glr << 2);
+}
+
+t_stat ci_send_data (int32 opcode, uint8 *buffer, int32 port, int32 path)
+{
+uint32 data_len, total_data_len, start_offset, msg_size;
+uint16 bdt_offset, page_offset;
+uint32 data_offset, data_pte;
+int32 r;
+
+total_data_len = GET_INT32 (buffer, 0x18);
+bdt_offset = GET_INT16 (buffer, 0x1c);                  /* Get BDT table offset */
+data_offset = GET_INT32 (buffer, 0x20);                 /* Get data starting offset */
+data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
+page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN), L_WORD) & 0x1FF;
+
+buffer[0xe] = opcode;                                   /* Set opcode */
+msg_size = 0x2c;
+
+r = ci_send_packet (buffer, msg_size, opcode, port, path);
+if (r != SCPE_OK)
+    return r;
+
+start_offset = 0;
+while (total_data_len > 0) {
+    if (total_data_len > (CI_NET_BUF_SIZE - 0xc))
+        data_len = (CI_NET_BUF_SIZE - 0xc);
+    else
+        data_len = total_data_len;
+
+    sim_debug (DBG_BLKTF, &ci_dev, "==>   SNDDAT, data_len: %d, time: %d\n", data_len, sim_grtime ());
+
+    ci_readb (data_pte, data_len, page_offset + data_offset + start_offset, &net_blk_buf[0xc]);
+    r = ci_send_packet (net_blk_buf, (data_len + 0xc), opcode, port, path);
+    total_data_len -= data_len;
+    start_offset += data_len;
+    }
+return SCPE_OK;
+}
+
+t_stat ci_receive_data (int32 opcode, int32 src, uint8 *buffer)
+{
+uint32 data_len, total_data_len, start_offset;
+uint16 bdt_offset, page_offset;
+uint32 data_offset, data_pte;
+
+if (blktf_table[src].incomplete == 0) {
+    //sim_debug (DBG_BLKTF, &ci_dev, "<== RECDAT, src: %d, path: %s\n", src, ci_path_names[ci_path]);
+
+    blktf_table[src].opcode = opcode;
+    blktf_table[src].total_data_len = GET_INT32 (buffer, 0x18);
+    //sim_debug (DBG_BLKTF, &ci_dev, "data_len: %d\n", blktf_table[src].total_data_len);
+    bdt_offset = GET_INT16 (buffer, 0x24);
+    blktf_table[src].data_offset = GET_INT32 (buffer, 0x28);
+    blktf_table[src].data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN) + BD_PTE_OF, L_LONG);
+    blktf_table[src].page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN), L_WORD) & 0x1FF;
+    blktf_table[src].start_offset = 0;
+    blktf_table[src].incomplete = 1;
+
+    memcpy (blktf_table[src].conf_buf, buffer, 0x2c);
+    if (opcode == OPC_SNDDAT) {
+        blktf_table[src].conf_buf[0xe] = OPC_CNFREC;    /* Set opcode */
+        blktf_table[src].conf_buf[0xf] = blktf_table[src].conf_buf[0xf] & ~0x1; /* Clear RSP flag */
+        }
+    return SCPE_INCOMP;
+    }
+
+if (blktf_table[src].total_data_len > (CI_NET_BUF_SIZE - 0xc))
+    data_len = (CI_NET_BUF_SIZE - 0xc);
+else
+    data_len = blktf_table[src].total_data_len;
+
+ci_writeb (blktf_table[src].data_pte, data_len, blktf_table[src].page_offset + blktf_table[src].data_offset
+               + blktf_table[src].start_offset, &buffer[0xc]);
+blktf_table[src].total_data_len -= data_len;
+blktf_table[src].start_offset += data_len;
+if (blktf_table[src].total_data_len > 0)
+    return SCPE_INCOMP;
+
+blktf_table[src].incomplete = 0;
+
+return SCPE_OK;
 }
 
 void ci_read_packet (int32 addr, int32 size, uint8 *buf)

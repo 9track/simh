@@ -27,6 +27,7 @@
 */
 
 #include "vax_defs.h"
+#include "vax_ci.h"
 #include "ciqba_pra0_bin.h"
 
 /* Register offsets */
@@ -105,19 +106,28 @@
 #define IOBA_CI              (IOPAGEBASE + 0xE00)
 #define IOLN_CI              0x80
 
+typedef struct {
+    uint32 entries;
+    uint16 *ring;
+} CI_QUEUE;
+
+#define NEW_QUEUE(n,s)      uint16 n##_d[(s * 2)]; \
+                            CI_QUEUE n## = { s, &n##_d[0] }
+
 uint16 ci_csr = 0;                                      /* status register */
 uint32 ci_vtba = 0;                                     /* VTB address */
 uint32 ci_vtbd = 0;                                     /* VTB data */
 uint16 ci_nvr[0x20] = { 0 };
-uint16 ci_rcv[CIS_RECEIVE_RING_ENTRIES * 2] = { 0 };
-uint16 ci_dsp[CIS_DISPOSE_RING_ENTRIES * 2] = { 0 };
-uint16 ci_sndl[CIS_SEND_LO_RING_ENTRIES * 2] = { 0 };
-uint16 ci_sndh[CIS_SEND_HI_RING_ENTRIES * 2] = { 0 };
+NEW_QUEUE (ci_rcv, CIS_RECEIVE_RING_ENTRIES);
+NEW_QUEUE (ci_dsp, CIS_DISPOSE_RING_ENTRIES);
+NEW_QUEUE (ci_sndl, CIS_SEND_LO_RING_ENTRIES);
+NEW_QUEUE (ci_sndh, CIS_SEND_HI_RING_ENTRIES);
 
 t_stat ci_rd (int32 *data, int32 PA, int32 access);
 t_stat ci_wr (int32 data, int32 PA, int32 access);
 int32 ci_vtb_rd (int32 pa);
 void ci_vtb_wr (int32 pa, int32 data);
+t_stat ci_svc_queue (CI_QUEUE *queue);
 t_stat ci_svc (UNIT *uptr);
 t_stat ci_reset (DEVICE *dptr);
 int32 ci_inta (void);
@@ -208,22 +218,22 @@ switch (rg) {
     default:
         if (rg >= CI_RECEIVE_RING) {
             rg = rg - CI_RECEIVE_RING;
-            *data = ci_rcv[rg];
+            *data = ci_rcv.ring[rg];
             break;
             }
         if (rg >= CI_DISPOSE_RING) {
             rg = rg - CI_DISPOSE_RING;
-            *data = ci_dsp[rg];
+            *data = ci_dsp.ring[rg];
             break;
             }
         if (rg >= CI_SEND_LO_RING) {
             rg = rg - CI_SEND_LO_RING;
-            *data = ci_sndl[rg];
+            *data = ci_sndl.ring[rg];
             break;
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
-            *data = ci_sndh[rg];
+            *data = ci_sndh.ring[rg];
             }
             break;
         }
@@ -263,11 +273,11 @@ switch (rg) {
             }
         else if (data & CCR_SEND_HI_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_HI_ATTN\n");
-            ci_svc_queue (CIS_SEND_HI);
+            ci_svc_queue (&ci_sndh);
             }
         else if (data & CCR_SEND_LO_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_LO_ATTN\n");
-            ci_svc_queue (CIS_SEND_LO);
+            ci_svc_queue (&ci_sndl);
             }
         break;
 
@@ -301,25 +311,25 @@ switch (rg) {
         if (rg >= CI_RECEIVE_RING) {
             rg = rg - CI_RECEIVE_RING;
             sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_rcv[%d] = %04X\n", rg, data);
-            ci_rcv[rg] = data;
+            ci_rcv.ring[rg] = data;
             break;
             }
         if (rg >= CI_DISPOSE_RING) {
             rg = rg - CI_DISPOSE_RING;
             sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_dsp[%d] = %04X\n", rg, data);
-            ci_dsp[rg] = data;
+            ci_dsp.ring[rg] = data;
             break;
             }
         if (rg >= CI_SEND_LO_RING) {
             rg = rg - CI_SEND_LO_RING;
             sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndl[%d] = %04X\n", rg, data);
-            ci_sndl[rg] = data;
+            ci_sndl.ring[rg] = data;
             break;
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
             sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndh[%d] = %04X\n", rg, data);
-            ci_sndh[rg] = data;
+            ci_sndh.ring[rg] = data;
             }
             break;
         }
@@ -362,34 +372,12 @@ return (ciqba_pra0_bin[rg] |
        (ciqba_pra0_bin[rg+3] << 24));
 }
 
-t_stat ci_dequeue (uint32 queue, CI_PKT *pkt)
+t_stat ci_dequeue (CI_QUEUE *queue, CI_PKT *pkt)
 {
-uint32 entries, entry;
-uint16 *ring;
+uint32 entry, i;
 
-switch (queue) {
-    case CIS_SEND_HI:
-        entries = CIS_SEND_HI_RING_ENTRIES;
-        ring = &ci_sndh[0];
-        break;
-
-    case CIS_SEND_LO:
-        entries = CIS_SEND_LO_RING_ENTRIES;
-        ring = &ci_sndl[0];
-        break;
-
-    case CIS_DISPOSE::
-        entries = CIS_DISPOSE_RING_ENTRIES;
-        ring = &ci_dsp[0];
-        break;
-
-    case CIS_RECEIVE:
-        entries = CIS_RECEIVE_RING_ENTRIES;
-        ring = &ci_rcv[0];
-        break;
-        }
-for (i = 0; i < entries; i++) {
-    entry = ring[i*2] | (ring[i*2+1] << 16);  // May need a macro?
+for (i = 0; i < queue->entries; i++) {
+    entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
     sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
     if (entry & RENT_CIQBA_OWNED) {
         pkt->addr = entry & RENT_ADDR;
@@ -397,42 +385,20 @@ for (i = 0; i < entries; i++) {
         pkt->length = (pkt->length << 2);
         sim_debug (DBG_REG, &ci_dev, "ci_dequeue: addr = %X, length = %X\n", pkt->addr, pkt->length);
         entry = entry & RENT_ADDR;
-        ring[i] = entry & 0xFFFF;  // Also may need a macro
-        ring[i+1] = (entry >> 16) & 0xFFFF;
+        queue->ring[i] = entry & 0xFFFF;  // Also may need a macro
+        queue->ring[i+1] = (entry >> 16) & 0xFFFF;
         return SCPE_OK;
         }
     }
 return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
 }
 
-t_stat ci_enqueue (uint32 queue, CI_PKT *pkt)
+t_stat ci_enqueue (CI_QUEUE *queue, CI_PKT *pkt)
 {
-uint32 entries, entry;
-uint16 *ring;
+uint32 entry, i;
 
-switch (queue) {
-    case CIS_SEND_HI:
-        entries = CIS_SEND_HI_RING_ENTRIES;
-        ring = &ci_sndh[0];
-        break;
-
-    case CIS_SEND_LO:
-        entries = CIS_SEND_LO_RING_ENTRIES;
-        ring = &ci_sndl[0];
-        break;
-
-    case CIS_DISPOSE::
-        entries = CIS_DISPOSE_RING_ENTRIES;
-        ring = &ci_dsp[0];
-        break;
-
-    case CIS_RECEIVE:
-        entries = CIS_RECEIVE_RING_ENTRIES;
-        ring = &ci_rcv[0];
-        break;
-        }
-for (i = 0; i < entries; i++) {
-    entry = ring[i*2] | (ring[i*2+1] << 16);  // May need a macro?
+for (i = 0; i < queue->entries; i++) {
+    entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
     sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
     if (entry & RENT_CIQBA_OWNED) {
         pkt->addr = entry & RENT_ADDR;
@@ -440,8 +406,8 @@ for (i = 0; i < entries; i++) {
         pkt->length = (pkt->length << 2);
         sim_debug (DBG_REG, &ci_dev, "ci_dequeue: addr = %X, length = %X\n", pkt->addr, pkt->length);
         entry = entry & RENT_ADDR;
-        ring[i] = entry & 0xFFFF;  // Also may need a macro
-        ring[i+1] = (entry >> 16) & 0xFFFF;
+        queue->ring[i] = entry & 0xFFFF;  // Also may need a macro
+        queue->ring[i+1] = (entry >> 16) & 0xFFFF;
         return SCPE_OK;
         }
     }
@@ -450,39 +416,43 @@ return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
 
 t_stat ci_put_dfq (CI_PKT *pkt)
 {
-    // Put to dispose queue
-    return ci_enqueue (CIS_DISPOSE, pkt);
+// Put to dispose queue
+return ci_enqueue (&ci_dsp, pkt);
 }
 
 t_stat ci_put_mfq (CI_PKT *pkt)
 {
-    // Put to dispose queue
-    return ci_enqueue (CIS_DISPOSE, pkt);
+// Put to dispose queue
+return ci_enqueue (&ci_dsp, pkt);
 }
 
 t_stat ci_put_rsq (CI_PKT *pkt)
 {
-    // Put to receive queue
-    return ci_enqueue (CIS_RECEIVE, pkt);
+// Put to receive queue
+return ci_enqueue (&ci_rcv, pkt);
 }
 
 t_stat ci_get_dfq (CI_PKT *pkt)
 {
-    // Get from receive queue?
-    return ci_dequeue (CIS_RECEIVE, pkt);
+// Get from receive queue?
+return ci_dequeue (&ci_rcv, pkt);
 }
 
 t_stat ci_get_mfq (CI_PKT *pkt)
 {
-    // Get from receive queue?
-    return ci_dequeue (CIS_RECEIVE, pkt);
+// Get from receive queue?
+return ci_dequeue (&ci_rcv, pkt);
 }
 
-t_stat ci_svc_queue (uint32 queue)
+t_stat ci_svc_queue (CI_QUEUE *queue)
 {
+CI_PKT pkt;
 t_stat r;
-while (ci_dequeue (queue, pkt) == SCPE_OK) {
-    r = ci_ppd (pkt);
+while (ci_dequeue (queue, &pkt) == SCPE_OK) {
+    r = ci_read_packet (pkt);
+    if (r != SCPE_OK)
+        break;
+    r = ci_ppd (&pkt);
     if (r != SCPE_OK)
         break;
     }

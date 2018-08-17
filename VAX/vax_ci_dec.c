@@ -188,7 +188,7 @@ switch (rg) {
         break;
 
     case CI_PPR:
-        *val = ci_ppr;
+        *val = ci_ppr | (ci_node & PPR_NODE);
         sim_debug (DBG_REG, &ci_dev, "PPR rd: %08X\n", *val);
         break;
 

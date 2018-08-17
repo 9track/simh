@@ -112,7 +112,7 @@ typedef struct {
 } CI_QUEUE;
 
 #define NEW_QUEUE(n,s)      uint16 n##_d[(s * 2)]; \
-                            CI_QUEUE n## = { s, &n##_d[0] }
+                            CI_QUEUE n = { s, &n##_d[0] }
 
 uint16 ci_csr = 0;                                      /* status register */
 uint32 ci_vtba = 0;                                     /* VTB address */
@@ -372,6 +372,20 @@ return (ciqba_pra0_bin[rg] |
        (ciqba_pra0_bin[rg+3] << 24));
 }
 
+t_stat ci_read_packet (CI_PKT *pkt, size_t length)
+{
+if (Map_ReadB (pkt->addr, length, &pkt->data[0]))
+    return SCPE_EOF;  // Need own status codes
+return SCPE_OK;
+}
+
+t_stat ci_write_packet (CI_PKT *pkt, size_t length)
+{
+if (Map_WriteB (pkt->addr, length, &pkt->data[0]))
+    return SCPE_EOF;
+return SCPE_OK;
+}
+
 t_stat ci_dequeue (CI_QUEUE *queue, CI_PKT *pkt)
 {
 uint32 entry, i;
@@ -449,7 +463,7 @@ t_stat ci_svc_queue (CI_QUEUE *queue)
 CI_PKT pkt;
 t_stat r;
 while (ci_dequeue (queue, &pkt) == SCPE_OK) {
-    r = ci_read_packet (pkt);
+    r = ci_read_packet (&pkt, pkt->length);
     if (r != SCPE_OK)
         break;
     r = ci_ppd (&pkt);
@@ -457,20 +471,6 @@ while (ci_dequeue (queue, &pkt) == SCPE_OK) {
         break;
     }
 return r;
-}
-
-t_stat ci_read_packet (CI_PKT *pkt)
-{
-if (Map_ReadB (pkt->addr, pkt->length, &pkt->data[0]))
-    return SCPE_EOF;  // Need own status codes
-return SCPE_OK;
-}
-
-t_stat ci_write_packet (CI_PKT *pkt)
-{
-if (Map_WriteB (pkt->addr, pkt->length, &pkt->data[0]))
-    return SCPE_EOF;
-return SCPE_OK;
 }
 
 t_stat ci_svc (UNIT *uptr)

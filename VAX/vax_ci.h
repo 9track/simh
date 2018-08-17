@@ -46,23 +46,21 @@
 #define PORT_INIT       10                              /* Initialised */
 #define PORT_ENABLED    20                              /* Enabled */
 
-#define VC_OPEN(x)     (x & 0x8000)
-#define DG_INHIBIT(x)  (x & 0x1000)
 #define CI_MAX_NODES   16
 
 #define CI_GET16(p,w)   (((uint16) p[w]) | \
                         (((uint16) p[(w)+1]) << 8))
 #define CI_GET32(p,w)   (((uint32) p[w]) | \
-                        (((uint32) p[(w)+1]) << 8)) | \
-                        (((uint32) p[(w)+2]) << 16)) | \
+                        (((uint32) p[(w)+1]) << 8) | \
+                        (((uint32) p[(w)+2]) << 16) | \
                         (((uint32) p[(w)+3]) << 24))
 
-#define CI_PUT16(p,w,x) d[w] = (x) & 0xFF; \
-                        d[(w)+1] = ((x) >> 8) & 0xFF
-#define CI_PUT32(p,w,x) d[w] = (x) & 0xFF; \
-                        d[(w)+1] = ((x) >> 8) & 0xFF; \
-                        d[(w)+2] = ((x) >> 16) & 0xFF; \
-                        d[(w)+3] = ((x) >> 24) & 0xFF
+#define CI_PUT16(p,w,x) p[w] = (x) & 0xFF; \
+                        p[(w)+1] = ((x) >> 8) & 0xFF
+#define CI_PUT32(p,w,x) p[w] = (x) & 0xFF; \
+                        p[(w)+1] = ((x) >> 8) & 0xFF; \
+                        p[(w)+2] = ((x) >> 16) & 0xFF; \
+                        p[(w)+3] = ((x) >> 24) & 0xFF
 
 #define CI_MAXFR        1024                            /* max xfer */
 
@@ -73,6 +71,7 @@ typedef struct {
 } CI_PKT;
 
 extern uint32 ci_state;
+extern uint32 ci_node;
 
 void ci_set_state (uint32 state);
 t_stat ci_ppd (CI_PKT *pkt);

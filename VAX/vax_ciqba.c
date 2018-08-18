@@ -128,7 +128,6 @@ t_stat ci_wr (int32 data, int32 PA, int32 access);
 int32 ci_vtb_rd (int32 pa);
 void ci_vtb_wr (int32 pa, int32 data);
 t_stat ci_svc_queue (CI_QUEUE *queue);
-t_stat ci_svc (UNIT *uptr);
 t_stat ci_reset (DEVICE *dptr);
 int32 ci_inta (void);
 
@@ -161,14 +160,19 @@ MTAB ci_mod[] = {
     { 0 }
     };
 
-/* Debugging Bitmaps */
-
-#define DBG_REG         0x0001                          /* register activity */
-
 DEBTAB ci_debug[] = {
     { "REG",    DBG_REG },
+    { "WARN",   DBG_WRN },
+    { "REQID",  DBG_REQID },
+    { "SCSDG",  DBG_SCSDG },
+    { "SCSMSG", DBG_SCSMSG },
+    { "PPDDG",  DBG_PPDDG },
+    { "BLKTF",  DBG_BLKTF },
+    { "LCMD",   DBG_LCMD },
+    { "CONN",   DBG_CONN },
+    { "TRACE",  DBG_TRC },
     { 0 }
-};
+    };
 
 DEVICE ci_dev = {
     "CI", &ci_unit, ci_reg, ci_mod,
@@ -219,21 +223,25 @@ switch (rg) {
         if (rg >= CI_RECEIVE_RING) {
             rg = rg - CI_RECEIVE_RING;
             *data = ci_rcv.ring[rg];
+            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_rcv[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_DISPOSE_RING) {
             rg = rg - CI_DISPOSE_RING;
             *data = ci_dsp.ring[rg];
+            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_dsp[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_SEND_LO_RING) {
             rg = rg - CI_SEND_LO_RING;
             *data = ci_sndl.ring[rg];
+            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndl[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
             *data = ci_sndh.ring[rg];
+            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndh[%d] = %04X\n", rg, *data);
             }
             break;
         }
@@ -386,6 +394,16 @@ if (Map_WriteB (pkt->addr, length, &pkt->data[0]))
 return SCPE_OK;
 }
 
+t_stat ci_send_data (int32 opcode, uint8 *buffer, int32 port, int32 path)
+{
+return SCPE_OK;
+}
+
+t_stat ci_receive_data (int32 opcode, int32 src, uint8 *buffer)
+{
+return SCPE_OK;
+}
+
 t_stat ci_dequeue (CI_QUEUE *queue, CI_PKT *pkt)
 {
 uint32 entry, i;
@@ -399,8 +417,9 @@ for (i = 0; i < queue->entries; i++) {
         pkt->length = (pkt->length << 2);
         sim_debug (DBG_REG, &ci_dev, "ci_dequeue: addr = %X, length = %X\n", pkt->addr, pkt->length);
         entry = entry & RENT_ADDR;
-        queue->ring[i] = entry & 0xFFFF;  // Also may need a macro
-        queue->ring[i+1] = (entry >> 16) & 0xFFFF;
+//        entry = 0;
+        queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
+        queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
         return SCPE_OK;
         }
     }
@@ -410,18 +429,18 @@ return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
 t_stat ci_enqueue (CI_QUEUE *queue, CI_PKT *pkt)
 {
 uint32 entry, i;
+uint32 length;
 
 for (i = 0; i < queue->entries; i++) {
     entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
-    sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
-    if (entry & RENT_CIQBA_OWNED) {
-        pkt->addr = entry & RENT_ADDR;
-        pkt->length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
-        pkt->length = (pkt->length << 2);
-        sim_debug (DBG_REG, &ci_dev, "ci_dequeue: addr = %X, length = %X\n", pkt->addr, pkt->length);
-        entry = entry & RENT_ADDR;
-        queue->ring[i] = entry & 0xFFFF;  // Also may need a macro
-        queue->ring[i+1] = (entry >> 16) & 0xFFFF;
+    sim_debug (DBG_REG, &ci_dev, "ci_enqueue: entry[%d] = %08X\n", i, entry);
+    if (entry == RENT_CIQBA_OWNED) {                    /* owned, empty? */
+        sim_debug (DBG_REG, &ci_dev, "ci_enqueue: addr = %X, length = %X\n", pkt->addr, pkt->length);
+        entry = pkt->addr & RENT_ADDR;
+//        length = pkt->length >> 2;
+//        entry = entry | (length << RENT_V_LENGTH);
+        queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
+        queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
         return SCPE_OK;
         }
     }
@@ -463,19 +482,19 @@ t_stat ci_svc_queue (CI_QUEUE *queue)
 CI_PKT pkt;
 t_stat r;
 while (ci_dequeue (queue, &pkt) == SCPE_OK) {
-    r = ci_read_packet (&pkt, pkt->length);
-    if (r != SCPE_OK)
+    r = ci_read_packet (&pkt, pkt.length);
+    if (r != SCPE_OK) {
+        sim_debug (DBG_REG, &ci_dev, "Read packet failed\n");
         break;
+        }
+    sim_debug (DBG_REG, &ci_dev, "Processing packet\n");
     r = ci_ppd (&pkt);
-    if (r != SCPE_OK)
+    if (r != SCPE_OK) {
+        sim_debug (DBG_REG, &ci_dev, "Process packet failed\n");
         break;
+        }
     }
 return r;
-}
-
-t_stat ci_svc (UNIT *uptr)
-{
-return SCPE_OK;
 }
 
 int32 ci_inta (void)
@@ -491,5 +510,6 @@ ci_csr = 0;
 ci_vtba = 0;
 ci_vtbd = 0;
 CLR_INT (CI);
+ci_port_reset (dptr);
 return SCPE_OK;
 }

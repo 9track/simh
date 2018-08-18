@@ -52,7 +52,8 @@ typedef struct {                                        /* register mappings */
     uint32      rg;                                     /* high addr */
 } REGMAP;
 
-t_stat ci_rdport (int32 *val, int32 rg, int32 lnt);
-t_stat ci_wrport (int32 val, int32 rg, int32 lnt);
+t_stat ci_dec_rd (int32 *val, int32 rg, int32 lnt);
+t_stat ci_dec_wr (int32 val, int32 rg, int32 lnt);
+t_stat ci_dec_reset (DEVICE *dptr);
 
 #endif

@@ -72,9 +72,12 @@ typedef struct {
 
 extern uint32 ci_state;
 extern uint32 ci_node;
+extern DEVICE ci_dev;
 
 void ci_set_state (uint32 state);
 t_stat ci_ppd (CI_PKT *pkt);
+t_stat ci_send_packet (CI_PKT *pkt, size_t length);
+t_stat ci_receive_packet (CI_PKT *pkt, uint8 port);
 t_stat ci_show_node (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
 t_stat ci_set_node (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat ci_show_tcp (FILE *st, UNIT *uptr, int32 val, CONST void *desc);

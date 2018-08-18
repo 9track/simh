@@ -28,6 +28,7 @@
 
 #include "vax_defs.h"
 #include "vax_ci.h"
+#include "vax_ci_dec.h"
 
 /* CI780 Registers */
 
@@ -156,18 +157,18 @@ MTAB ci_mod[] = {
     };
 
 DEBTAB ci_debug[] = {
-    {"REG",    DBG_REG},
-    {"WARN",   DBG_WRN},
-    {"REQID",  DBG_REQID},
-    {"SCSDG",  DBG_SCSDG},
-    {"SCSMSG", DBG_SCSMSG},
-    {"PPDDG",  DBG_PPDDG},
-    {"BLKTF",  DBG_BLKTF},
-    {"LCMD",   DBG_LCMD},
-    {"CONN",   DBG_CONN},
-    {"TRACE",  DBG_TRC},
-    {0}
-};
+    { "REG",    DBG_REG },
+    { "WARN",   DBG_WRN },
+    { "REQID",  DBG_REQID },
+    { "SCSDG",  DBG_SCSDG },
+    { "SCSMSG", DBG_SCSMSG },
+    { "PPDDG",  DBG_PPDDG },
+    { "BLKTF",  DBG_BLKTF },
+    { "LCMD",   DBG_LCMD },
+    { "CONN",   DBG_CONN },
+    { "TRACE",  DBG_TRC },
+    { 0 }
+    };
 
 DEVICE ci_dev = {
     "CI", &ci_unit, ci_reg, ci_mod,
@@ -223,7 +224,7 @@ if ((rg >= 0x800) && (ci_state < PORT_UCODERUN)) {      /* microcode not running
     }
 for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port register */
     if (p->offset == rg)                                /* mapped? */
-        return ci_rdport (val, p->rg, lnt);
+        return ci_dec_rd (val, p->rg, lnt);
     }
 switch (rg) {                                           /* CI780 specific registers */
 
@@ -280,7 +281,7 @@ if ((rg >= 0x800) && (ci_state < PORT_UCODERUN)) {      /* microcode not running
     }
 for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port register */
     if (p->offset == rg)                                /* mapped? */
-        return ci_wrport (val, p->rg, lnt);
+        return ci_dec_wr (val, p->rg, lnt);
     }
 switch (rg) {                                           /* case on type */
 
@@ -363,5 +364,6 @@ ci_madr = 0;
 for (i = 0; i < 8192; i++)
     ci_mdatr[i] = 0;
 ci_port_reset (dptr);
+ci_dec_reset (dptr);
 return SCPE_OK;
 }

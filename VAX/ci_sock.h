@@ -44,6 +44,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <netinet/in.h>                                 /* for sockaddr_in */
+#include <netinet/tcp.h>                                /* for TCP_NODELAY */
 #include <netdb.h>
 #include <sys/time.h>                                   /* for EMX */
 #endif

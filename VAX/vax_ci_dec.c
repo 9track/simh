@@ -26,6 +26,7 @@
 
 #include "vax_defs.h"
 #include "vax_ci.h"
+#include "vax_ci_dec.h"
 #include "vax_gvp.h"
 
 /* Port Status */
@@ -119,18 +120,19 @@ uint32 ci_pesr;                                         /* port error status */
 uint32 ci_ppr;                                          /* port parameter reg */
 GVPMMU ci_mmu;                                          /* memory management unit */
 
+extern void ci_set_int (void);
+extern void ci_clr_int (void);
+
+void ci_read_packet (CI_PKT *pkt, size_t length);
+void ci_write_packet (CI_PKT *pkt, size_t length);
 void ci_readb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
 void ci_writeb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
 void ci_read_pqb (uint32 pa);
 
 t_stat ci_port_command (int32 queue)
 {
-int32 status, msg_type;
-t_stat r;
-uint32 i, ent_addr, opcode, port_num, dg_type, cmd_flags, ci_queue_base, reply_addr;
-uint32 ci_path;
-uint16 msg_size;
-UNIT *uptr = &ci_unit;
+uint32 ent_addr;
+CI_PKT pkt;
 
 for ( ;; ) {
     ent_addr = gvp_remqhi (&ci_mmu, ci_pqbb_va + queue);
@@ -142,12 +144,16 @@ for ( ;; ) {
 
     if (ent_addr & 0x3)
         printf ("Command queue packet not LW aligned\n");
+    
+    pkt.addr = ent_addr;
+    ci_read_packet (&pkt, CI_MAXFR); // TODO: get packet size from memory?
+    ci_ppd (&pkt);
     }
 }
 
 /* Read CI port register */
 
-t_stat ci_rdport (int32 *val, int32 rg, int32 lnt)
+t_stat ci_dec_rd (int32 *val, int32 rg, int32 lnt)
 {
 switch (rg) {
 
@@ -201,7 +207,7 @@ return SCPE_OK;
 
 /* Write CI port register */
 
-t_stat ci_wrport (int32 val, int32 rg, int32 lnt)
+t_stat ci_dec_wr (int32 val, int32 rg, int32 lnt)
 {
 switch (rg) {
 
@@ -325,14 +331,15 @@ ci_mmu.glr = (ci_mmu.glr << 2);
 
 t_stat ci_send_data (int32 opcode, uint8 *buffer, int32 port, int32 path)
 {
+#if 0
 uint32 data_len, total_data_len, start_offset, msg_size;
 uint16 bdt_offset, page_offset;
 uint32 data_offset, data_pte;
 int32 r;
 
-total_data_len = GET_INT32 (buffer, 0x18);
-bdt_offset = GET_INT16 (buffer, 0x1c);                  /* Get BDT table offset */
-data_offset = GET_INT32 (buffer, 0x20);                 /* Get data starting offset */
+total_data_len = CI_GET32 (buffer, 0x18);
+bdt_offset = CI_GET16 (buffer, 0x1c);                   /* Get BDT table offset */
+data_offset = CI_GET32 (buffer, 0x20);                  /* Get data starting offset */
 data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
 page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN), L_WORD) & 0x1FF;
 
@@ -345,8 +352,8 @@ if (r != SCPE_OK)
 
 start_offset = 0;
 while (total_data_len > 0) {
-    if (total_data_len > (CI_NET_BUF_SIZE - 0xc))
-        data_len = (CI_NET_BUF_SIZE - 0xc);
+    if (total_data_len > (CI_MAXFR - 0xc))
+        data_len = (CI_MAXFR - 0xc);
     else
         data_len = total_data_len;
 
@@ -357,11 +364,13 @@ while (total_data_len > 0) {
     total_data_len -= data_len;
     start_offset += data_len;
     }
+#endif
 return SCPE_OK;
 }
 
 t_stat ci_receive_data (int32 opcode, int32 src, uint8 *buffer)
 {
+#if 0
 uint32 data_len, total_data_len, start_offset;
 uint16 bdt_offset, page_offset;
 uint32 data_offset, data_pte;
@@ -370,10 +379,10 @@ if (blktf_table[src].incomplete == 0) {
     //sim_debug (DBG_BLKTF, &ci_dev, "<== RECDAT, src: %d, path: %s\n", src, ci_path_names[ci_path]);
 
     blktf_table[src].opcode = opcode;
-    blktf_table[src].total_data_len = GET_INT32 (buffer, 0x18);
+    blktf_table[src].total_data_len = CI_GET32 (buffer, 0x18);
     //sim_debug (DBG_BLKTF, &ci_dev, "data_len: %d\n", blktf_table[src].total_data_len);
-    bdt_offset = GET_INT16 (buffer, 0x24);
-    blktf_table[src].data_offset = GET_INT32 (buffer, 0x28);
+    bdt_offset = CI_GET16 (buffer, 0x24);
+    blktf_table[src].data_offset = CI_GET32 (buffer, 0x28);
     blktf_table[src].data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN) + BD_PTE_OF, L_LONG);
     blktf_table[src].page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN), L_WORD) & 0x1FF;
     blktf_table[src].start_offset = 0;
@@ -387,8 +396,8 @@ if (blktf_table[src].incomplete == 0) {
     return SCPE_INCOMP;
     }
 
-if (blktf_table[src].total_data_len > (CI_NET_BUF_SIZE - 0xc))
-    data_len = (CI_NET_BUF_SIZE - 0xc);
+if (blktf_table[src].total_data_len > (CI_MAXFR - 0xc))
+    data_len = (CI_MAXFR - 0xc);
 else
     data_len = blktf_table[src].total_data_len;
 
@@ -400,26 +409,26 @@ if (blktf_table[src].total_data_len > 0)
     return SCPE_INCOMP;
 
 blktf_table[src].incomplete = 0;
-
+#endif
 return SCPE_OK;
 }
 
-void ci_read_packet (int32 addr, int32 size, uint8 *buf)
+void ci_read_packet (CI_PKT *pkt, size_t length)
 {
 int32 i;
 
 // Skip header (length = 0xc)
-for (i = 0xc; i < size; i++)
-    buf[i] = GVP_Read (&ci_mmu, (addr + i), L_BYTE);
+for (i = 0xc; i < length; i++)
+    pkt->data[i] = GVP_Read (&ci_mmu, (pkt->addr + i), L_BYTE);
 }
 
-void ci_write_packet (int32 addr, int32 size, uint8 *buf)
+void ci_write_packet (CI_PKT *pkt, size_t length)
 {
 int32 i;
 
 // Skip header (length = 0xc)
-for (i = 0xc; i < size; i++)
-    GVP_Write (&ci_mmu, (addr + i), buf[i], L_BYTE);
+for (i = 0xc; i < length; i++)
+    GVP_Write (&ci_mmu, (pkt->addr + i), pkt->data[i], L_BYTE);
 }
 
 // TODO: Move these to GVP?
@@ -479,50 +488,55 @@ else {
     }
 }
 
-void put_rsp_queue (int32 addr)
+t_stat ci_put_rsq (CI_PKT *pkt)
 {
-if (gvp_insqti (&ci_mmu, ci_pqbb_va + PQB_RESP_OF, addr) > 1) {
+if (gvp_insqti (&ci_mmu, ci_pqbb_va + PQB_RESP_OF, pkt->addr) > 1) {
     ci_psr |= PSR_RQA;
     ci_set_int ();
     }
+return SCPE_OK;
 }
 
-void put_dgf_queue (int32 addr)
+t_stat ci_put_dfq (CI_PKT *pkt)
 {
 uint32 hdr;
 
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_DFQA_OF, L_LONG);
-gvp_insqti (&ci_mmu, hdr, addr);
+gvp_insqti (&ci_mmu, hdr, pkt->addr);
+return SCPE_OK;
 }
 
-int32 get_dgf_queue (void)
+t_stat ci_get_dfq (CI_PKT *pkt)
 {
 uint32 hdr;
 
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_DFQA_OF, L_LONG);
-return gvp_remqhi (&ci_mmu, hdr);
+pkt->addr = gvp_remqhi (&ci_mmu, hdr);
+return SCPE_OK;
 }
 
 
-void put_msf_queue (int32 addr)
+t_stat ci_put_mfq (CI_PKT *pkt)
 {
 uint32 hdr;
 
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_MFQA_OF, L_LONG);
-gvp_insqti (&ci_mmu, hdr, addr);
+gvp_insqti (&ci_mmu, hdr, pkt->addr);
+return SCPE_OK;
 }
 
-int32 get_msf_queue (void)
+t_stat ci_get_mfq (CI_PKT *pkt)
 {
 uint32 hdr;
 
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_MFQA_OF, L_LONG);
-return gvp_remqhi (&ci_mmu, hdr);
+pkt->addr = gvp_remqhi (&ci_mmu, hdr);
+return SCPE_OK;
 }
 
 /* Reset CI adapter */
 
-t_stat ci_port_reset (DEVICE *dptr)
+t_stat ci_dec_reset (DEVICE *dptr)
 {
 ci_psr = 0;
 ci_pesr = 0;

@@ -46,6 +46,24 @@
 #define PORT_INIT       10                              /* Initialised */
 #define PORT_ENABLED    20                              /* Enabled */
 
+/* PPD Offsets */
+
+#define PPD_FLINK       0x00                            /* forward link */
+#define PPD_BLINK       0x04                            /* backward link */
+#define PPD_SIZE        0x08                            /* structure size */
+#define PPD_TYPE        0x0A                            /* structure type */
+#define PPD_SWFLAG      0x0B                            /* software flags */
+#define PPD_PORT        0x0C                            /* src/dest port */
+#define PPD_STATUS      0x0D                            /* status */
+#define PPD_OPC         0x0E                            /* opcode */
+#define PPD_FLAGS       0x0F                            /* flags */
+#define PPD_LENGTH      0x10                            /* message length */
+#define PPD_MTYPE       0x12                            /* message type */
+#define PPD_STYPE       0x14                            /* SCS message type */
+#define PPD_VCMMSK      0x10                            /* VCD modify mask */
+#define PPD_VCMVAL      0x14                            /* VCD modify value */
+#define PPD_VCPVAL      0x18                            /* VCD previous value */
+
 #define CI_MAX_NODES   16
 
 #define CI_GET16(p,w)   (((uint16) p[w]) | \
@@ -66,6 +84,7 @@
 
 typedef struct {
     uint32 addr;
+    size_t size;
     size_t length;
     uint8 data[CI_MAXFR];
 } CI_PKT;
@@ -78,6 +97,8 @@ void ci_set_state (uint32 state);
 t_stat ci_ppd (CI_PKT *pkt);
 t_stat ci_send_packet (CI_PKT *pkt, size_t length);
 t_stat ci_receive_packet (CI_PKT *pkt, uint8 port);
+t_stat ci_open_vc (uint8 port);
+t_stat ci_close_vc (uint8 port);
 t_stat ci_show_node (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
 t_stat ci_set_node (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat ci_show_tcp (FILE *st, UNIT *uptr, int32 val, CONST void *desc);

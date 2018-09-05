@@ -81,6 +81,8 @@
 #define CSR_NO_INTERRUPT     0x4000
 #define CSR_ERROR            0x8000
 
+#define CIQBA_FWVER          1                          /* firmware version */
+
 #define CIS_DATA             0x7FFF
 #define CIS_OP_COMPLETE      0x80000000
 
@@ -106,14 +108,202 @@
 #define IOBA_CI              (IOPAGEBASE + 0xE00)
 #define IOLN_CI              0x80
 
+#define PQ_BASE              0x80E1D880
+
+typedef struct {
+    char *symbol;
+    uint32 value;
+} SYMTBL;
+
+const SYMTBL pq_syms[] = {
+    { "PQ$DDT", 0xC4 },
+    { "T_FAKE_CONREG", 0x1A4 },
+    { "P_PQUCB", 0x2A4 },
+    { "R_BOUNDS_TABLE", 0x2A8 },
+    { "R_GRANT_TABLE", 0x2AC },
+    { "R_OFFSET_TABLE", 0x2B0 },
+    { "R_OWN_TABLE", 0x2B4 },
+    { "R_DISPOSE_TABLE", 0x2B8 },
+    { "R_THROTTLE_TABLE", 0x2BC },
+    { "B_ILLMSG_SAVED", 0x2C0 },
+    { "R_ILLMSG_BUFFER", 0x2C4 },
+    { "L_SNAPSHOT_VALID", 0x300 },
+    { "L_LAST_ERRTYPE", 0x304 },
+    { "PQ_GR_SNAPSHOT", 0x308 },
+    { "PQ_L_DEBUGCHECK", 0x388 },
+    { "PQ_L_CIQBA_ERRBRK", 0x38C },
+    { "PQ_L_CIQBA_ERRDUMP", 0x390 },
+    { "PQ__BLOCK_INFLUX", 0x431 },
+    { "PQ__CAPTURE", 0x52F },
+    { "PQ__CI_TO_SCS_PPD", 0x58D },
+    { "PQ__CIQBA_ERROR", 0x631 },
+    { "PQ__CIQBA_MESSAGE", 0x6DC },
+    { "PQ__COPY", 0x85B },
+    { "PQ__CREATE_PORT_STRUCT", 0x95C },
+    { "PQ__DISPOSE", 0xA6E },
+    { "PQ__ENABLE_RECEIVE", 0xBBD },
+    { "PQ__ENINT", 0xC5A },
+    { "PQ__EXTRACT_RING", 0xCD3 },
+    { "PQ__FLUSH_RING", 0xDF1 },
+    { "PQ__GET_PPD_SIZE", 0xE86 },
+    { "PQ__HOST_OWN", 0xEB2 },
+    { "PQ__INIT_PDT", 0xED7 },
+    { "PQ__INIT_RING", 0xF01 },
+    { "PQ__INSERT_RING", 0xF6A },
+    { "PQ__INS_COMQH", 0x10F1 },
+    { "PQ__INS_COMQL", 0x1135 },
+    { "PQ__INS_DFREQ", 0x117A },
+    { "PQ__INS_MFREQ", 0x11AB },
+    { "PQ__INS_RSPQ", 0x11DC },
+    { "PQ__LAST_RETDAT", 0x1219 },
+    { "PQ__LOG_ERROR", 0x12AC },
+    { "PQ__MEM_DUMP", 0x12D6 },
+    { "PQ__NEXT_ENTRY", 0x12D7 },
+    { "PQ__POKE_PORT", 0x12FA },
+    { "PQ__POWERFAIL", 0x12FB },
+    { "PQ__Q22_TO_SYS", 0x12FF },
+    { "PQ__RECYCLE", 0x1375 },
+    { "PQ__RECEIVE", 0x13AD },
+    { "PQ__REG_DISP", 0x14D0 },
+    { "PQ__REQDAT", 0x14FC },
+    { "PQ__REQUEUE", 0x1513 },
+    { "PQ__REVECTOR", 0x157F },
+    { "PQ__ROUTE_PPD", 0x164A },
+    { "PQ__SEND_BLOCK", 0x179E },
+    { "PQ__SEND_ID", 0x17DC },
+    { "PQ__SEND_SEGMENTS", 0x1853 },
+    { "PQ__SEND_SETUP", 0x18EA },
+    { "PQ__SHUT_ALL_VC", 0x19B8 },
+    { "PQ__START_UCODE", 0x19CB },
+    { "PQ__STOP_UCODE", 0x1B1B },
+    { "PQ__SYS_TO_Q22", 0x1D1A },
+    { "PQ__TIMER", 0x1DDE },
+    { "PQ__TRACE_EVENT", 0x1EED },
+    { "PQ__TRACE_PPD", 0x1F29 },
+    { "PQ__UNMAP", 0x1F70 },
+    { "PQ__UNMAP_PDT", 0x207F },
+    { "PQ__UNWAIT", 0x2080 },
+    { "PQ_CIQBA_INTERRUPT", 0x20AF },
+    { "PQ_CONTROLLER_INIT", 0x2114 },
+    { "PQ_MAP", 0x211B },
+    { "PQ_REG_DUMP", 0x2269 },
+    { "PQ_SNAPSHOT", 0x22D4 },
+    { "PQ_UNIT_INIT", 0x22FF },
+    { "PQ_UNIT_INIT_FORK", 0x2330 },
+    { "PQ__BOGUS_PAK", 0x2715 },
+    { "IRP_TRACE", 0x275C },
+    { "IRP_TRACE_I", 0x2B5C },
+    { "FIN_TRACE", 0x2B60 },
+    { "FIN_TRACE_I", 0x2F60 },
+    { "PQCL_ACCESS", 0x2F61 },
+    { "PQCL_CANCEL", 0x2F62 },
+    { "PQCL_DEACCESS", 0x2F78 },
+    { "PQCL_READ", 0x2F79 },
+    { "PQCL_SENSEMODE", 0x2FF1 },
+    { "PQCL_SETMODE", 0x2FF2 },
+    { "PQCL_WRITE", 0x30D5 },
+    { "PQMAR_CREATE_FORK", 0x30D8 },
+    { "PQMAR_CONVERT_PPD", 0x30E5 },
+    { "PQMAR_ELAPSED_TIME", 0x3120 },
+    { "PQMAR_WAITSRBITS", 0x3188 },
+    { "PQMAR_WAITSRBITC", 0x31BC },
+    { "PQMAR_INTERRUPT", 0x31F0 },
+    { "PQMAR_INVALIDATE_TB", 0x324E },
+    { "PQMAR_INV_Q22MAP", 0x326F },
+    { "PQMAR_MAP_IRP", 0x3296 },
+    { "PQMAR_MAP_IRPBYP", 0x3296 },
+    { "PQMAR_MAP", 0x32A0 },
+    { "PQMAR_MAPBYPASS", 0x32A0 },
+    { "PQMAR_UNSTALL", 0x332F },
+    { "PQMAR_RESUME_CDRP", 0x3367 },
+    { "PQMAR_PORT_INTERRUPT", 0x3376 },
+    { "PQMAR_WAIT", 0x3386 },
+    { "PQ_CIQBA_DUMP", 0x3620 },
+    { "PQ_CIQBA_READWORD", 0x368C },
+    { "PQ_HOST_SHUT_PROCESSING", 0x36DB },
+    { "PQ_SHUT_CIQBA", 0x3844 },
+    { "PQ___PROVIDE_RECEIVE_PACKET", 0x395C },
+    { "PQ_VERSION", 0x3A08 },
+    { NULL, 0 }
+    };
+
+const char *ci_rgd[] = {
+    "Control Register",
+    "Status Register",
+    "Interrupt Vector",
+    "Firmware Version",
+    "Port Num",
+    "Mem Addr (Low)",
+    "Mem Addr (High)",
+    "Mem Data",
+    "Send High [0L]",
+    "Send High [0H]",
+    "Send High [1L]",
+    "Send High [1H]",
+    "Send High [2L]",
+    "Send High [2H]",
+    "Send High [3L]",
+    "Send High [3H]",
+    "Send Low [0L]",
+    "Send Low [0H]",
+    "Send Low [1L]",
+    "Send Low [1H]",
+    "Send Low [2L]",
+    "Send Low [2H]",
+    "Send Low [3L]",
+    "Send Low [3H]",
+    "Send Low [4L]",
+    "Send Low [4H]",
+    "Send Low [5L]",
+    "Send Low [5H]",
+    "Send Low [6L]",
+    "Send Low [6H]",
+    "Send Low [7L]",
+    "Send Low [7H]",
+    "Dispose [0L]",
+    "Dispose [0H]",
+    "Dispose [1L]",
+    "Dispose [1H]",
+    "Dispose [2L]",
+    "Dispose [2H]",
+    "Dispose [3L]",
+    "Dispose [3H]",
+    "Dispose [4L]",
+    "Dispose [4H]",
+    "Dispose [5L]",
+    "Dispose [5H]",
+    "Dispose [6L]",
+    "Dispose [6H]",
+    "Dispose [7L]",
+    "Dispose [7H]",
+    "Receive [0L]",
+    "Receive [0H]",
+    "Receive [1L]",
+    "Receive [1H]",
+    "Receive [2L]",
+    "Receive [2H]",
+    "Receive [3L]",
+    "Receive [3H]",
+    "Receive [4L]",
+    "Receive [4H]",
+    "Receive [5L]",
+    "Receive [5H]",
+    "Receive [6L]",
+    "Receive [6H]",
+    "Receive [7L]",
+    "Receive [7H]"
+    };
+
 typedef struct {
     uint32 entries;
     uint16 *ring;
+    uint32 ptr;
 } CI_QUEUE;
 
 #define NEW_QUEUE(n,s)      uint16 n##_d[(s * 2)]; \
                             CI_QUEUE n = { s, &n##_d[0] }
 
+uint16 ci_ccr = 0;                                      /* command register */
 uint16 ci_csr = 0;                                      /* status register */
 uint32 ci_vtba = 0;                                     /* VTB address */
 uint32 ci_vtbd = 0;                                     /* VTB data */
@@ -122,14 +312,18 @@ NEW_QUEUE (ci_rcv, CIS_RECEIVE_RING_ENTRIES);
 NEW_QUEUE (ci_dsp, CIS_DISPOSE_RING_ENTRIES);
 NEW_QUEUE (ci_sndl, CIS_SEND_LO_RING_ENTRIES);
 NEW_QUEUE (ci_sndh, CIS_SEND_HI_RING_ENTRIES);
+char ci_sym_text[30];
+t_bool ci_vc_open[32];
 
 t_stat ci_rd (int32 *data, int32 PA, int32 access);
 t_stat ci_wr (int32 data, int32 PA, int32 access);
+t_stat ciqba_svc (UNIT *uptr);
 int32 ci_vtb_rd (int32 pa);
 void ci_vtb_wr (int32 pa, int32 data);
-t_stat ci_svc_queue (CI_QUEUE *queue);
+t_stat ci_svc_queue (CI_QUEUE *queue, uint32 *processed);
 t_stat ci_reset (DEVICE *dptr);
 int32 ci_inta (void);
+char *ci_sym (uint32 addr);
 
 
 /* CIQBA adapter data structures
@@ -140,23 +334,25 @@ int32 ci_inta (void);
 */
 
 DIB ci_dib = {
-    IOBA_CI, IOLN_CI, &ci_rd, &ci_wr,
+    IOBA_AUTO, IOLN_CI, &ci_rd, &ci_wr,
     1, IVCL (CI), 0, { &ci_inta }
     };
 
-UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, VTB_NVR_SIZE) };
+UNIT ci_unit = { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, VTB_NVR_SIZE) };
 
 REG ci_reg[] = {
     { NULL }
     };
 
 MTAB ci_mod[] = {
-//    { MTAB_XTD|MTAB_VDV, 0, "NODE", "NODE",
-//        &ci_set_node, &ci_show_node },
+    { MTAB_XTD|MTAB_VDV, 0, "NODE", "NODE",
+      &ci_set_node, &ci_show_node },
+    { MTAB_XTD|MTAB_VDV, 0, "PORT", "PORT",
+      &ci_set_tcp, &ci_show_tcp },
     { MTAB_XTD|MTAB_VDV|MTAB_VALR, 004, "ADDRESS", "ADDRESS",
-        &set_addr, &show_addr, NULL, "Bus address" },
+      &set_addr, &show_addr, NULL, "Bus address" },
     { MTAB_XTD|MTAB_VDV|MTAB_VALR, 0, "VECTOR", "VECTOR",
-        &set_vec,  &show_vec,  NULL, "Interrupt vector" },
+      &set_vec, &show_vec,  NULL, "Interrupt vector" },
     { 0 }
     };
 
@@ -187,24 +383,30 @@ DEVICE ci_dev = {
 t_stat ci_rd (int32 *data, int32 PA, int32 access)
 {
 int32 rg = (PA >> 1) &  0x3F;
+DIB *dibp = (DIB *)ci_dev.ctxt;
 
 *data = 0;
 switch (rg) {
 
     case CI_CONTROL_REG:
+        CLR_INT (CI);
         break;
 
     case CI_STATUS_REG:
         *data = ci_csr;
+        ci_csr = ci_csr & ~(CSR_RECEIVE_ATTN | CSR_DISPOSE_ATTN | CSR_SEND_LO_AVAIL | CSR_SEND_HI_AVAIL);
         break;
 
     case CI_INTERRUPT_VEC:
+        *data = (dibp->vec >> 2);
         break;
 
     case CI_FIRMWARE_VER:
+        *data = CIQBA_FWVER;
         break;
 
     case CI_PORT_NUM:
+        *data = ci_node;
         break;
 
     case CI_MEM_ADDR_LO:
@@ -223,29 +425,30 @@ switch (rg) {
         if (rg >= CI_RECEIVE_RING) {
             rg = rg - CI_RECEIVE_RING;
             *data = ci_rcv.ring[rg];
-            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_rcv[%d] = %04X\n", rg, *data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_rcv[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_DISPOSE_RING) {
             rg = rg - CI_DISPOSE_RING;
             *data = ci_dsp.ring[rg];
-            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_dsp[%d] = %04X\n", rg, *data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_dsp[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_SEND_LO_RING) {
             rg = rg - CI_SEND_LO_RING;
             *data = ci_sndl.ring[rg];
-            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndl[%d] = %04X\n", rg, *data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndl[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
             *data = ci_sndh.ring[rg];
-            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndh[%d] = %04X\n", rg, *data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndh[%d] = %04X\n", rg, *data);
             }
             break;
         }
-sim_debug (DBG_REG, &ci_dev, "ci_rd: %08X = %04X at %08X\n", PA, *data, fault_PC);
+rg = (PA >> 1) &  0x3F;
+sim_debug (DBG_REG, &ci_dev, "ci_rd: %08X = %04X at %08X %s (%s)\n", PA, *data, fault_PC, ci_rgd[rg], ci_sym(fault_PC));
 }
 
 t_stat ci_wr (int32 data, int32 PA, int32 access)
@@ -253,8 +456,10 @@ t_stat ci_wr (int32 data, int32 PA, int32 access)
 int32 rg = (PA >> 1) &  0x3F;
 uint32 entry, addr, length, i, j;
 uint8 pkt[1024];
+uint32 processed = 0;
+DIB *dibp = (DIB *)ci_dev.ctxt;
 
-sim_debug (DBG_REG, &ci_dev, "ci_wr: %08X = %04X at %08X\n", PA, data, fault_PC);
+sim_debug (DBG_REG, &ci_dev, "ci_wr: %08X = %04X at %08X %s (%s)\n", PA, data, fault_PC, ci_rgd[rg], ci_sym(fault_PC));
     
 switch (rg) {
 
@@ -269,30 +474,39 @@ switch (rg) {
             }
         else if (data & CCR_WRITE_EEPROM)
             ci_vtba |= CIS_OP_COMPLETE;
-        else if (data & CCR_INITIALIZE)
+        else if (data & CCR_INITIALIZE) {
             ci_csr |= CSR_INITIALIZED;
-        else if (data & CCR_START)
+            ci_set_state (PORT_INIT);
+            }
+        else if (data & CCR_START) {
             ci_csr |= CSR_RUNNING;
-        else if (data & CCR_RUNDOWN)
-            ci_csr &= ~CSR_RUNNING;
-        else if (data & CCR_HALT) {
-            ci_csr &= ~CSR_INITIALIZED;
-            ci_csr &= ~CSR_RUNNING;
+            ci_set_state (PORT_ENABLED);
             }
         else if (data & CCR_SEND_HI_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_HI_ATTN\n");
-            ci_svc_queue (&ci_sndh);
+            ci_svc_queue (&ci_sndh, &processed);
             }
         else if (data & CCR_SEND_LO_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_LO_ATTN\n");
-            ci_svc_queue (&ci_sndl);
+            ci_svc_queue (&ci_sndl, &processed);
             }
+        else {
+            // TODO: handle transition back to halted state in vax_ci.c
+            if (data & CCR_RUNDOWN)
+                ci_csr &= ~CSR_RUNNING;
+            if (data & CCR_HALT) {
+                ci_csr &= ~CSR_INITIALIZED;
+                ci_set_state (PORT_UNINIT);
+                }
+            }
+        ci_ccr = data & CCR_ENABLE_INT;
         break;
 
     case CI_STATUS_REG:
         break;
 
     case CI_INTERRUPT_VEC:
+        dibp->vec = (data << 2);
         break;
 
     case CI_FIRMWARE_VER:
@@ -318,25 +532,25 @@ switch (rg) {
     default:
         if (rg >= CI_RECEIVE_RING) {
             rg = rg - CI_RECEIVE_RING;
-            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_rcv[%d] = %04X\n", rg, data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_rcv[%d] = %04X\n", rg, data);
             ci_rcv.ring[rg] = data;
             break;
             }
         if (rg >= CI_DISPOSE_RING) {
             rg = rg - CI_DISPOSE_RING;
-            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_dsp[%d] = %04X\n", rg, data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_dsp[%d] = %04X\n", rg, data);
             ci_dsp.ring[rg] = data;
             break;
             }
         if (rg >= CI_SEND_LO_RING) {
             rg = rg - CI_SEND_LO_RING;
-            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndl[%d] = %04X\n", rg, data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndl[%d] = %04X\n", rg, data);
             ci_sndl.ring[rg] = data;
             break;
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
-            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndh[%d] = %04X\n", rg, data);
+//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndh[%d] = %04X\n", rg, data);
             ci_sndh.ring[rg] = data;
             }
             break;
@@ -382,15 +596,32 @@ return (ciqba_pra0_bin[rg] |
 
 t_stat ci_read_packet (CI_PKT *pkt, size_t length)
 {
-if (Map_ReadB (pkt->addr, length, &pkt->data[0]))
+uint32 i;
+memset (pkt->data, 0, PPD_TYPE);
+if (Map_ReadB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE]))
     return SCPE_EOF;  // Need own status codes
+sim_debug (DBG_REG, &ci_dev, "ci_read_packet (%d bytes):\n", length);
+for (i = 0; i < length; i++) {
+    if ((i % 4) == 0)
+        sim_debug (DBG_REG, &ci_dev, "\n");
+    sim_debug (DBG_REG, &ci_dev, "%02X ", pkt->data[i ^ 3]);
+    }
+sim_debug (DBG_REG, &ci_dev, "\n");
 return SCPE_OK;
 }
 
 t_stat ci_write_packet (CI_PKT *pkt, size_t length)
 {
-if (Map_WriteB (pkt->addr, length, &pkt->data[0]))
+uint32 i;
+if (Map_WriteB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE]))
     return SCPE_EOF;
+sim_debug (DBG_REG, &ci_dev, "ci_write_packet (%d bytes):\n", length);
+for (i = 0; i < length; i++) {
+    if ((i % 4) == 0)
+        sim_debug (DBG_REG, &ci_dev, "\n");
+    sim_debug (DBG_REG, &ci_dev, "%02X ", pkt->data[i ^ 3]);
+    }
+sim_debug (DBG_REG, &ci_dev, "\n");
 return SCPE_OK;
 }
 
@@ -404,91 +635,239 @@ t_stat ci_receive_data (int32 opcode, int32 src, uint8 *buffer)
 return SCPE_OK;
 }
 
-t_stat ci_dequeue (CI_QUEUE *queue, CI_PKT *pkt)
+t_stat ci_dequeue (CI_QUEUE *queue, CI_PKT *pkt, t_bool keep)
 {
 uint32 entry, i;
 
-for (i = 0; i < queue->entries; i++) {
+//for (i = 0; i < queue->entries; i++) {
+i = queue->ptr;
     entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
-    sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
+//    sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
     if (entry & RENT_CIQBA_OWNED) {
         pkt->addr = entry & RENT_ADDR;
-        pkt->length = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
-        pkt->length = (pkt->length << 2);
-        sim_debug (DBG_REG, &ci_dev, "ci_dequeue: addr = %X, length = %X\n", pkt->addr, pkt->length);
-        entry = entry & RENT_ADDR;
+        pkt->size = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
+        pkt->size = (pkt->size << 2);
+        sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry = %d, addr = %X, size = %X\n", i, pkt->addr, pkt->size);
+        if (keep)
+            entry = RENT_CIQBA_OWNED;
+        else
+            entry = entry & RENT_ADDR;
 //        entry = 0;
         queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
         queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
+        if (!keep) {
+            queue->ptr++;
+            if (queue->ptr == queue->entries)
+                queue->ptr = 0;
+            }
         return SCPE_OK;
         }
-    }
+//    }
 return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
 }
 
-t_stat ci_enqueue (CI_QUEUE *queue, CI_PKT *pkt)
+t_stat ci_enqueue (CI_QUEUE *queue, CI_PKT *pkt, t_bool internal)
 {
 uint32 entry, i;
-uint32 length;
+uint32 size;
 
-for (i = 0; i < queue->entries; i++) {
+//for (i = 0; i < queue->entries; i++) {
+i = queue->ptr;
     entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
-    sim_debug (DBG_REG, &ci_dev, "ci_enqueue: entry[%d] = %08X\n", i, entry);
+//    sim_debug (DBG_REG, &ci_dev, "ci_enqueue: entry[%d] = %08X\n", i, entry);
     if (entry == RENT_CIQBA_OWNED) {                    /* owned, empty? */
-        sim_debug (DBG_REG, &ci_dev, "ci_enqueue: addr = %X, length = %X\n", pkt->addr, pkt->length);
+        sim_debug (DBG_REG, &ci_dev, "ci_enqueue: entry = %d, addr = %X, size = %X\n", i, pkt->addr, pkt->size);
         entry = pkt->addr & RENT_ADDR;
-//        length = pkt->length >> 2;
-//        entry = entry | (length << RENT_V_LENGTH);
+        size = pkt->size >> 2;
+        entry = entry | (size << RENT_V_LENGTH);
+        if (!internal)
+            entry = entry | RENT_PACKET_TYPE;
         queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
         queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
+        queue->ptr++;
+        if (queue->ptr == queue->entries)
+            queue->ptr = 0;
         return SCPE_OK;
         }
-    }
+//    }
+sim_debug (DBG_REG, &ci_dev, "ci_enqueue failed\n");
 return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
 }
 
-t_stat ci_put_dfq (CI_PKT *pkt)
+t_stat ci_put_dfq_int (CI_PKT *pkt)
 {
 // Put to dispose queue
-return ci_enqueue (&ci_dsp, pkt);
+ci_csr |= CSR_DISPOSE_ATTN;
+if (ci_ccr & CCR_ENABLE_INT)
+    SET_INT (CI);
+sim_debug (DBG_REG, &ci_dev, "ci_put_dfq_int\n");
+pkt->size = 0;
+return ci_enqueue (&ci_dsp, pkt, TRUE);
 }
 
-t_stat ci_put_mfq (CI_PKT *pkt)
+/*
+CIPPD_B_LEN_HI = ^X0000000B
+CIPPD_B_LEN_LO = ^X0000000C
+CIPPD_B_DEST = ^X0000000D
+CIPPD_B_NOT_DEST = ^X0000000E
+CIPPD_B_SRC = ^X0000000F
+CIPPD_B_OPC = ^X00000010
+CIPPD_B_SEQ_CNTRL = ^X00000011
+
+PPD_B_SWFLAG = ^X0000000B
+PPD_B_PORT = ^X0000000C
+PPD_B_STATUS = ^X0000000D
+PPD_B_OPC = ^X0000000E
+PPD_B_FLAGS = ^X0000000F
+PPD_W_LENGTH = ^X00000010
+*/
+void ci_fmt_pkt (CI_PKT *pkt)
+{
+uint32 swflags = pkt->data[0xB];
+uint32 port = pkt->data[0xC];
+uint32 opc = pkt->data[0xE];
+uint32 flags = pkt->data[0xF];
+uint32 length = CI_GET16 (pkt->data, 0x10) + 0x12; // CIPPD_K_HEADER_LENGTH
+swflags = 0;
+if (flags & 0x8)   // PPD_M_LP
+    swflags = swflags | 0x1;
+swflags |= ((flags << 3) & 0x30); // Add received path
+//flags = swflags | (flags & 0xCF);
+pkt->data[0xB] = (length >> 8) & 0xFF;
+pkt->data[0xC] = length & 0xFF;
+pkt->data[0xD] = ci_node;
+pkt->data[0xE] = ~ci_node;
+pkt->data[0xF] = port;
+pkt->data[0x10] = opc;
+pkt->data[0x11] = swflags;
+ci_write_packet (pkt, 0x12); // CIPPD_K_HEADER_LENGTH
+}
+
+t_stat ci_dispose (CI_PKT *pkt)
 {
 // Put to dispose queue
-return ci_enqueue (&ci_dsp, pkt);
+ci_csr |= CSR_DISPOSE_ATTN;
+if (ci_ccr & CCR_ENABLE_INT)
+    SET_INT (CI);
+sim_debug (DBG_REG, &ci_dev, "ci_dispose\n");
+pkt->size = 0;
+return ci_enqueue (&ci_dsp, pkt, FALSE);
 }
 
-t_stat ci_put_rsq (CI_PKT *pkt)
+t_stat ci_respond (CI_PKT *pkt)
 {
+ci_write_packet (pkt, 0x10); // TODO: move header size definitions to vax_ci.h
+// Put to dispose queue
+ci_csr |= CSR_DISPOSE_ATTN;
+if (ci_ccr & CCR_ENABLE_INT)
+    SET_INT (CI);
+sim_debug (DBG_REG, &ci_dev, "ci_respond\n");
+pkt->size = 0;
+return ci_enqueue (&ci_dsp, pkt, FALSE);
+}
+
+t_stat ci_receive (CI_PKT *pkt)
+{
+ci_dequeue (&ci_rcv, pkt, TRUE);
+ci_write_packet (pkt, pkt->length);
+ci_fmt_pkt (pkt);
 // Put to receive queue
-return ci_enqueue (&ci_rcv, pkt);
+ci_csr |= CSR_RECEIVE_ATTN;
+if (ci_ccr & CCR_ENABLE_INT)
+    SET_INT (CI);
+sim_debug (DBG_REG, &ci_dev, "ci_receive\n");
+return ci_enqueue (&ci_rcv, pkt, FALSE);
 }
 
-t_stat ci_get_dfq (CI_PKT *pkt)
+/*
+PPD_K_HOST_QUERY = ^X00000000
+PPD_K_HOST_INIT = ^X00000001
+PPD_K_PROMISC_ENABLE = ^X00000002
+PPD_K_PROMISC_DISABLE = ^X00000003
+PPD_K_RESET = ^X00000004
+PPD_K_MAP = ^X00000005
+PPD_K_UNMAP = ^X00000006
+PPD_K_HOST_QUERY_RSP = ^X00000080
+PPD_K_PROMISC_PACKET = ^X00000082
+*/
+
+t_stat ciqba_msg (CI_PKT *pkt)
 {
-// Get from receive queue?
-return ci_dequeue (&ci_rcv, pkt);
+uint8 port;
+t_stat r;
+
+switch (pkt->data[PPD_OPC]) {
+    case 0:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Host Query\n");
+        pkt->data[PPD_OPC] = 0x80;
+        ci_write_packet (pkt, 0x12); // CIPPD_K_HEADER_LENGTH
+        ci_put_dfq_int (pkt);
+        break;
+
+    case 1:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Host Init\n");
+        ci_put_dfq_int (pkt);
+        break;
+
+    case 2:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Promisc Enable\n");
+        break;
+
+    case 3:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Promisc Disable\n");
+        break;
+
+    case 4:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Reset\n");
+        port = pkt->data[PPD_PORT];
+        if (!ci_vc_open[port]) {
+            sim_debug (DBG_REG, &ci_dev, "CIQBA Opening VC to %d\n", port);
+            r = ci_open_vc (port);
+            }
+        else {
+            sim_debug (DBG_REG, &ci_dev, "CIQBA Closing VC to %d\n", port);
+            r = ci_close_vc (port);
+            }
+        if (r == SCPE_OK) {
+            sim_debug (DBG_REG, &ci_dev, "CIQBA VC status: OK\n");
+            ci_vc_open[port] = !ci_vc_open[port];
+            }
+        else
+            sim_debug (DBG_REG, &ci_dev, "CIQBA VC status: ERROR\n");
+        ci_put_dfq_int (pkt);
+        break;
+
+    case 5:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Map\n");
+        break;
+
+    case 6:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Unmap\n");
+        break;
+    default:
+        sim_debug (DBG_REG, &ci_dev, "CIQBA Unknown Message\n");
+        break;
+        }
+return SCPE_OK;
 }
 
-t_stat ci_get_mfq (CI_PKT *pkt)
-{
-// Get from receive queue?
-return ci_dequeue (&ci_rcv, pkt);
-}
-
-t_stat ci_svc_queue (CI_QUEUE *queue)
+t_stat ci_svc_queue (CI_QUEUE *queue, uint32 *processed)
 {
 CI_PKT pkt;
-t_stat r;
-while (ci_dequeue (queue, &pkt) == SCPE_OK) {
-    r = ci_read_packet (&pkt, pkt.length);
+t_stat r = SCPE_OK;
+while (ci_dequeue (queue, &pkt, FALSE) == SCPE_OK) {
+    *processed = *processed + 1;
+    r = ci_read_packet (&pkt, pkt.size);
     if (r != SCPE_OK) {
         sim_debug (DBG_REG, &ci_dev, "Read packet failed\n");
         break;
         }
+    pkt.length = pkt.size;
     sim_debug (DBG_REG, &ci_dev, "Processing packet\n");
-    r = ci_ppd (&pkt);
+    if ((pkt.data[PPD_TYPE] == 0x3B) || (pkt.data[PPD_TYPE] == 0x3C)) /* SCS_DG or SCS_MSG */
+        r = ci_ppd (&pkt);
+    else /* CIQBA message */
+        r = ciqba_msg (&pkt);
     if (r != SCPE_OK) {
         sim_debug (DBG_REG, &ci_dev, "Process packet failed\n");
         break;
@@ -497,19 +876,68 @@ while (ci_dequeue (queue, &pkt) == SCPE_OK) {
 return r;
 }
 
+t_stat ciqba_svc (UNIT *uptr)
+{
+t_stat r;
+uint32 processed = 0;
+r = ci_svc_queue (&ci_sndh, &processed);
+if (r != SCPE_OK)
+    return r;
+if (processed > 0) {
+    ci_csr |= CSR_SEND_HI_AVAIL;
+    SET_INT (CI);
+    }
+processed = 0;
+r = ci_svc_queue (&ci_sndl, &processed);
+if (r != SCPE_OK)
+    return r;
+if (processed > 0) {
+    ci_csr |= CSR_SEND_LO_AVAIL;
+    SET_INT (CI);
+    }
+return ci_svc (uptr);
+}
+
+char *ci_sym (uint32 addr)
+{
+uint32 i = 0;
+addr = addr - PQ_BASE;
+while (pq_syms[i].symbol != NULL) {
+    if (addr < pq_syms[i].value) {
+        sprintf (ci_sym_text, "%s+%X", pq_syms[i-1].symbol, (addr - pq_syms[i-1].value));
+        return ci_sym_text;
+        }
+//        return pq_syms[i].symbol;
+    i++;
+    }
+return "";
+}
+
 int32 ci_inta (void)
 {
-return 0;
+DIB *dibp = (DIB *)ci_dev.ctxt;
+return dibp->vec;
 }
 
 /* Reset CI adapter */
 
 t_stat ci_reset (DEVICE *dptr)
 {
+int32 i;
+
+DIB *dibp = (DIB *)ci_dev.ctxt;
+ci_ccr = 0;
 ci_csr = 0;
+dibp->vec = 0;
 ci_vtba = 0;
 ci_vtbd = 0;
+ci_rcv.ptr = 0;
+ci_dsp.ptr = 0;
+ci_sndl.ptr = 0;
+ci_sndh.ptr = 0;
+for (i = 0; i < 32; i++)
+    ci_vc_open[i] = FALSE;
 CLR_INT (CI);
 ci_port_reset (dptr);
-return SCPE_OK;
+return auto_config (0, 0);                              /* run autoconfig */
 }

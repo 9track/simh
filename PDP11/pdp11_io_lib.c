@@ -789,6 +789,8 @@ AUTO_CON auto_tab[] = {/*c  #v  am vm  fxa   fxv */
         {04040}, {0270} },                              /* NG - vector display */
     { { "DAZ" },         1,  1,  0, 0, 
         {00104} },                                      /* DAZ */
+    { { "CI" },          1, -1,  4, 4,                  /* MTI CIQBA */
+        {007000}, {0220} },
     { { NULL },         -1 }                            /* end table */
 };
 

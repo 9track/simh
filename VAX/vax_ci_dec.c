@@ -132,6 +132,7 @@ void ci_read_pqb (uint32 pa);
 t_stat ci_port_command (int32 queue)
 {
 uint32 ent_addr;
+int16 length;
 CI_PKT pkt;
 
 for ( ;; ) {
@@ -146,7 +147,13 @@ for ( ;; ) {
         printf ("Command queue packet not LW aligned\n");
     
     pkt.addr = ent_addr;
-    ci_read_packet (&pkt, CI_MAXFR); // TODO: get packet size from memory?
+    length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD);
+    if (length < 0) {
+        ent_addr = ent_addr + length;                   /* offset to network header */
+        length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD) + length;
+        }
+    pkt.length = length;
+    ci_read_packet (&pkt, CI_MAXFR);
     ci_ppd (&pkt);
     }
 }
@@ -418,7 +425,7 @@ void ci_read_packet (CI_PKT *pkt, size_t length)
 int32 i;
 
 // Skip header (length = 0xc)
-for (i = 0xc; i < length; i++)
+for (i = PPD_PORT; i < length; i++)
     pkt->data[i] = GVP_Read (&ci_mmu, (pkt->addr + i), L_BYTE);
 }
 
@@ -427,7 +434,7 @@ void ci_write_packet (CI_PKT *pkt, size_t length)
 int32 i;
 
 // Skip header (length = 0xc)
-for (i = 0xc; i < length; i++)
+for (i = PPD_PORT; i < length; i++)
     GVP_Write (&ci_mmu, (pkt->addr + i), pkt->data[i], L_BYTE);
 }
 

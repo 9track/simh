@@ -336,105 +336,95 @@ ci_mmu.glr = CI_ReadL (pa + PQB_GLR_OF);
 ci_mmu.glr = (ci_mmu.glr << 2);
 }
 
-t_stat ci_send_data (int32 opcode, uint8 *buffer, int32 port, int32 path)
+#define CI_DATHDR       0x2C
+#define CI_MAXDAT       (CI_MAXFR - CI_DATHDR)
+
+t_stat ci_send_data (CI_PKT *pkt)
 {
-#if 0
-uint32 data_len, total_data_len, start_offset, msg_size;
-uint16 bdt_offset, page_offset;
-uint32 data_offset, data_pte;
-int32 r;
+uint32 data_len, total_data_len;
+uint16 snd_name, page_offset;
+uint32 snd_offset, rec_offset, data_pte;
+t_stat r;
 
-total_data_len = CI_GET32 (buffer, 0x18);
-bdt_offset = CI_GET16 (buffer, 0x1c);                   /* Get BDT table offset */
-data_offset = CI_GET32 (buffer, 0x20);                  /* Get data starting offset */
-data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
-page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN), L_WORD) & 0x1FF;
+total_data_len = CI_GET32 (pkt->data, 0x18);
+snd_name = CI_GET16 (pkt->data, 0x1C);                  /* Get BDT table offset */
+snd_offset = CI_GET32 (pkt->data, 0x20);                /* Get data starting offset */
+rec_offset = CI_GET32 (pkt->data, 0x28);                /* Get data starting offset */
+data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
+page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN), L_WORD) & 0x1FF;
 
-buffer[0xe] = opcode;                                   /* Set opcode */
-msg_size = 0x2c;
-
-r = ci_send_packet (buffer, msg_size, opcode, port, path);
-if (r != SCPE_OK)
-    return r;
-
-start_offset = 0;
 while (total_data_len > 0) {
-    if (total_data_len > (CI_MAXFR - 0xc))
-        data_len = (CI_MAXFR - 0xc);
+    if (total_data_len > CI_MAXDAT)
+        data_len = CI_MAXDAT;
     else
         data_len = total_data_len;
 
-    sim_debug (DBG_BLKTF, &ci_dev, "==>   SNDDAT, data_len: %d, time: %d\n", data_len, sim_grtime ());
+    if (pkt->data[PPD_OPC] == OPC_SNDDAT)
+        sim_debug (DBG_BLKTF, &ci_dev, "==>   SNDDAT, data_len: %d, time: %d\n", data_len, sim_grtime ());
+    else
+        sim_debug (DBG_BLKTF, &ci_dev, "==>   RETDAT, data_len: %d, time: %d\n", data_len, sim_grtime ());
 
-    ci_readb (data_pte, data_len, page_offset + data_offset + start_offset, &net_blk_buf[0xc]);
-    r = ci_send_packet (net_blk_buf, (data_len + 0xc), opcode, port, path);
+    ci_readb (data_pte, data_len, page_offset + snd_offset, &pkt->data[CI_DATHDR]);
+    CI_PUT32 (pkt->data, 0x18, total_data_len);         /* update packet */
+    CI_PUT32 (pkt->data, 0x28, rec_offset);
+    r = ci_send_packet (pkt, data_len + CI_DATHDR);
+    if (r != SCPE_OK)
+        return r;
     total_data_len -= data_len;
-    start_offset += data_len;
+    snd_offset += data_len;
+    rec_offset += data_len;
     }
-#endif
 return SCPE_OK;
 }
 
-t_stat ci_receive_data (int32 opcode, int32 src, uint8 *buffer)
+t_stat ci_receive_data (CI_PKT *pkt)
 {
-#if 0
-uint32 data_len, total_data_len, start_offset;
-uint16 bdt_offset, page_offset;
-uint32 data_offset, data_pte;
+uint32 data_len, total_data_len;
+uint16 rec_name, page_offset;
+uint32 rec_offset, data_pte;
+t_stat r;
 
-if (blktf_table[src].incomplete == 0) {
-    //sim_debug (DBG_BLKTF, &ci_dev, "<== RECDAT, src: %d, path: %s\n", src, ci_path_names[ci_path]);
+total_data_len = CI_GET32 (pkt->data, 0x18);
+rec_name = CI_GET16 (pkt->data, 0x24);                  /* Get BDT table offset */
+rec_offset = CI_GET32 (pkt->data, 0x28);                /* Get data starting offset */
+data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
+page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN), L_WORD) & 0x1FF;
 
-    blktf_table[src].opcode = opcode;
-    blktf_table[src].total_data_len = CI_GET32 (buffer, 0x18);
-    //sim_debug (DBG_BLKTF, &ci_dev, "data_len: %d\n", blktf_table[src].total_data_len);
-    bdt_offset = CI_GET16 (buffer, 0x24);
-    blktf_table[src].data_offset = CI_GET32 (buffer, 0x28);
-    blktf_table[src].data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN) + BD_PTE_OF, L_LONG);
-    blktf_table[src].page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (bdt_offset * BD_LEN), L_WORD) & 0x1FF;
-    blktf_table[src].start_offset = 0;
-    blktf_table[src].incomplete = 1;
-
-    memcpy (blktf_table[src].conf_buf, buffer, 0x2c);
-    if (opcode == OPC_SNDDAT) {
-        blktf_table[src].conf_buf[0xe] = OPC_CNFREC;    /* Set opcode */
-        blktf_table[src].conf_buf[0xf] = blktf_table[src].conf_buf[0xf] & ~0x1; /* Clear RSP flag */
-        }
-    return SCPE_INCOMP;
-    }
-
-if (blktf_table[src].total_data_len > (CI_MAXFR - 0xc))
-    data_len = (CI_MAXFR - 0xc);
+if (total_data_len > CI_MAXDAT)
+    data_len = CI_MAXDAT;
 else
-    data_len = blktf_table[src].total_data_len;
+    data_len = total_data_len;
 
-ci_writeb (blktf_table[src].data_pte, data_len, blktf_table[src].page_offset + blktf_table[src].data_offset
-               + blktf_table[src].start_offset, &buffer[0xc]);
-blktf_table[src].total_data_len -= data_len;
-blktf_table[src].start_offset += data_len;
-if (blktf_table[src].total_data_len > 0)
-    return SCPE_INCOMP;
+ci_writeb (data_pte, data_len, page_offset + rec_offset, &pkt->data[CI_DATHDR]);
 
-blktf_table[src].incomplete = 0;
-#endif
+total_data_len -= data_len;
+
+if ((total_data_len == 0) && (pkt->data[PPD_OPC] == OPC_SNDDAT)) {
+    pkt->data[PPD_OPC] = OPC_RETCNF;
+    r = ci_send_packet (pkt, data_len + CI_DATHDR);
+    if (r != SCPE_OK)
+        return r;
+    }
 return SCPE_OK;
 }
+
+/* Read a packet from memory */
 
 void ci_read_packet (CI_PKT *pkt, size_t length)
 {
 int32 i;
 
-// Skip header (length = 0xc)
-for (i = PPD_PORT; i < length; i++)
+for (i = PPD_SIZE; i < length; i++)                     /* skip the queue pointers */
     pkt->data[i] = GVP_Read (&ci_mmu, (pkt->addr + i), L_BYTE);
 }
+
+/* Write a packet to memory */
 
 void ci_write_packet (CI_PKT *pkt, size_t length)
 {
 int32 i;
 
-// Skip header (length = 0xc)
-for (i = PPD_PORT; i < length; i++)
+for (i = PPD_PORT; i < length; i++)                     /* don't overwrite the header */
     GVP_Write (&ci_mmu, (pkt->addr + i), pkt->data[i], L_BYTE);
 }
 
@@ -495,6 +485,8 @@ else {
     }
 }
 
+/* Put a packet on the response queue */
+
 t_stat ci_put_rsq (CI_PKT *pkt)
 {
 if (gvp_insqti (&ci_mmu, ci_pqbb_va + PQB_RESP_OF, pkt->addr) > 1) {
@@ -503,6 +495,8 @@ if (gvp_insqti (&ci_mmu, ci_pqbb_va + PQB_RESP_OF, pkt->addr) > 1) {
     }
 return SCPE_OK;
 }
+
+/* Put a packet on the datagram free queue */
 
 t_stat ci_put_dfq (CI_PKT *pkt)
 {
@@ -513,6 +507,8 @@ gvp_insqti (&ci_mmu, hdr, pkt->addr);
 return SCPE_OK;
 }
 
+/* Get a packet from the response queue */
+
 t_stat ci_get_dfq (CI_PKT *pkt)
 {
 uint32 hdr;
@@ -522,6 +518,7 @@ pkt->addr = gvp_remqhi (&ci_mmu, hdr);
 return SCPE_OK;
 }
 
+/* Put a packet on the message free queue */
 
 t_stat ci_put_mfq (CI_PKT *pkt)
 {
@@ -532,6 +529,8 @@ gvp_insqti (&ci_mmu, hdr, pkt->addr);
 return SCPE_OK;
 }
 
+/* Get a packet from the datagram free queue */
+
 t_stat ci_get_mfq (CI_PKT *pkt)
 {
 uint32 hdr;
@@ -539,6 +538,44 @@ uint32 hdr;
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_MFQA_OF, L_LONG);
 pkt->addr = gvp_remqhi (&ci_mmu, hdr);
 return SCPE_OK;
+}
+
+/* Dispose of an outgoing packet that does not need a response */
+
+t_stat ci_dispose (CI_PKT *pkt)
+{
+if (pkt->addr != 0) {
+    if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
+        return ci_put_mfq (pkt);
+    else
+        return ci_put_dfq (pkt);
+    }
+return SCPE_IERR;
+}
+
+/* Respond to an outgoing packet */
+
+t_stat ci_respond (CI_PKT *pkt)
+{
+if (pkt->addr != 0) {
+    ci_write_packet (pkt, 0x10); // TODO: move header size definitions to vax_ci.h
+    return ci_put_rsq (pkt);
+    }
+return SCPE_IERR;
+}
+
+/* New incoming packet received */
+
+t_stat ci_receive (CI_PKT *pkt)
+{
+if (pkt->addr == 0) {
+    if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
+        return ci_get_mfq (pkt);
+    else
+        return ci_get_dfq (pkt);
+    }
+ci_write_packet (pkt, pkt->length);
+return ci_put_rsq (pkt);
 }
 
 /* Reset CI adapter */

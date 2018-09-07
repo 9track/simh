@@ -46,6 +46,11 @@
 #define PORT_INIT       10                              /* Initialised */
 #define PORT_ENABLED    20                              /* Enabled */
 
+/* Datastructure types */
+
+#define DYN_SCSDG       0x3B
+#define DYN_SCSMSG      0x3C
+
 /* PPD Offsets */
 
 #define PPD_FLINK       0x00                            /* forward link */
@@ -64,7 +69,70 @@
 #define PPD_VCMVAL      0x14                            /* VCD modify value */
 #define PPD_VCPVAL      0x18                            /* VCD previous value */
 
-#define CI_MAX_NODES   16
+/* PPD Sizes */
+
+#define PPD_HDR         0x10                            /* PPD header size */
+#define PPD_DGHDR       (PPD_HDR + 0x4)                 /* datagram header size */
+#define PPD_MSGHDR      (PPD_HDR + 0x4)                 /* message header size */
+
+/* Transmit Opcodes */
+
+#define OPC_SNDDG       0x01                            /* send datagram */
+#define OPC_SNDMSG      0x02                            /* send message */
+#define OPC_RETCNF      0x03                            /* confirm return */
+#define OPC_REQID       0x05                            /* request ID */
+#define OPC_SNDRST      0x06                            /* send reset */
+#define OPC_SNDSTRT     0x07                            /* send start */
+#define OPC_REQDAT      0x08                            /* request data (at priority 0) */
+#define OPC_REQDAT1     0x09                            /* request data (at priority 1) */
+#define OPC_REQDAT2     0x0A                            /* request data (at priority 2) */
+#define OPC_RETID       0x0B                            /* send ID */
+#define OPC_SNDLB       0x0D                            /* send loopback */
+#define OPC_REQMDAT     0x0E                            /* request maintenance data */
+#define OPC_SNDDAT      0x10                            /* send data */
+#define OPC_RETDAT      0x11                            /* return data */
+#define OPC_SNDMDAT     0x12                            /* send maintenance data */
+
+/* Local Opcodes */
+
+#define OPC_INVTC       0x18                            /* invalidate translation cache */
+#define OPC_SETCKT      0x19                            /* set circuit */
+#define OPC_RDCNT       0x1A                            /* read counters */
+
+/* Receive Opcodes */
+
+#define OPC_M_RECV      0x20                            /* opcode receive flag */
+#define OPC_DGREC       (OPC_M_RECV | OPC_SNDDG)        /* datagram received */
+#define OPC_MSGREC      (OPC_M_RECV | OPC_SNDMSG)       /* message received */
+#define OPC_CNFREC      (OPC_M_RECV | OPC_RETCNF)       /* confirm received */
+#define OPC_REQREC      (OPC_M_RECV | OPC_REQID)        /* request ID recevied */
+#define OPC_REQDATREC   (OPC_M_RECV | OPC_REQDAT)       /* request data received */
+#define OPC_MCNFREC     0x29                            /* maintenance confirm received */
+#define OPC_IDREC       (OPC_M_RECV | OPC_RETID)        /* ID received */
+#define OPC_LBREC       (OPC_M_RECV | OPC_SNDLB)        /* loopback received */
+#define OPC_SNDDATREC   (OPC_M_RECV | OPC_SNDDAT)       /* send data received */
+#define OPC_DATREC      (OPC_M_RECV | OPC_RETDAT)       /* data recieved */
+#define OPC_MDATREC     0x33                            /* maintenance data recieved */
+
+/* PPD Flags */
+
+#define PPD_RSP         1                               /* respond to command */
+#define PPD_V_PS        1                               /* path select */
+#define PPD_M_PS        0x3
+#define  PPD_PSAUTO     0                               /* automatic */
+#define  PPD_PS0        1                               /* use path 0 */
+#define  PPD_PS1        2                               /* use path 1 */
+#define GET_PATH(x)     ((x >> PPD_V_PS) & PPD_M_PS)
+#define PPD_V_SP        4                               /* send path */
+#define PPD_M_SP        0x3
+#define PPD_V_M         4                               /* multiple value, blk xfer only */
+#define PPD_M_M         0x7
+#define PPD_P           0x80                            /* 0/1 for 512/576 data pkt size */
+                                                        /*  or packing format for messages */
+                                                        /*  to PDP 10/20 ports. */
+#define PPD_FORCE       0x80                            /* force reset */
+#define PPD_DSTART      0x80                            /* default start addr */
+#define PPD_EXTCNT      0x80                            /* extended counters */
 
 #define CI_GET16(p,w)   (((uint16) p[w]) | \
                         (((uint16) p[(w)+1]) << 8))
@@ -81,6 +149,7 @@
                         p[(w)+3] = ((x) >> 24) & 0xFF
 
 #define CI_MAXFR        1024                            /* max xfer */
+#define CI_MAX_NODES    16
 
 typedef struct {
     uint32 addr;

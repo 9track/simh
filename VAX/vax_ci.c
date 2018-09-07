@@ -1,4 +1,4 @@
-/* vax_ci_vcd.c: Computer Interconnect adapter
+/* vax_ci.c: Computer Interconnect adapter
 
    Copyright (c) 2017, Matt Burke
 
@@ -61,71 +61,6 @@
 #include "vax_ci.h"
 #include "ci_sock.h"
 #include <time.h>
-
-/* Transmit Opcodes */
-
-#define OPC_SNDDG       0x01                            /* send datagram */
-#define OPC_SNDMSG      0x02                            /* send message */
-#define OPC_RETCNF      0x03                            /* confirm return */
-#define OPC_REQID       0x05                            /* request ID */
-#define OPC_SNDRST      0x06                            /* send reset */
-#define OPC_SNDSTRT     0x07                            /* send start */
-#define OPC_REQDAT      0x08                            /* request data (at priority 0) */
-#define OPC_REQDAT1     0x09                            /* request data (at priority 1) */
-#define OPC_REQDAT2     0x0A                            /* request data (at priority 2) */
-#define OPC_RETID       0x0B                            /* send ID */
-#define OPC_SNDLB       0x0D                            /* send loopback */
-#define OPC_REQMDAT     0x0E                            /* request maintenance data */
-#define OPC_SNDDAT      0x10                            /* send data */
-#define OPC_RETDAT      0x11                            /* return data */
-#define OPC_SNDMDAT     0x12                            /* send maintenance data */
-
-/* Local Opcodes */
-
-#define OPC_INVTC       0x18                            /* invalidate translation cache */
-#define OPC_SETCKT      0x19                            /* set circuit */
-#define OPC_RDCNT       0x1A                            /* read counters */
-
-/* Receive Opcodes */
-
-#define OPC_M_RECV      0x20                            /* opcode receive flag */
-#define OPC_DGREC       (OPC_M_RECV | OPC_SNDDG)        /* datagram received */
-#define OPC_MSGREC      (OPC_M_RECV | OPC_SNDMSG)       /* message received */
-#define OPC_CNFREC      (OPC_M_RECV | OPC_RETCNF)       /* confirm received */
-#define OPC_REQREC      (OPC_M_RECV | OPC_REQID)        /* request ID recevied */
-#define OPC_REQDATREC   (OPC_M_RECV | OPC_REQDAT)       /* request data received */
-#define OPC_MCNFREC     0x29                            /* maintenance confirm received */
-#define OPC_IDREC       (OPC_M_RECV | OPC_RETID)        /* ID received */
-#define OPC_LBREC       (OPC_M_RECV | OPC_SNDLB)        /* loopback received */
-#define OPC_SNDDATREC   (OPC_M_RECV | OPC_SNDDAT)       /* send data received */
-#define OPC_DATREC      (OPC_M_RECV | OPC_RETDAT)       /* data recieved */
-#define OPC_MDATREC     0x33                            /* maintenance data recieved */
-
-/* PPD Sizes */
-
-#define PPD_HDR         0x10                            /* PPD header size */
-#define PPD_DGHDR       (PPD_HDR + 0x4)                 /* datagram header size */
-#define PPD_MSGHDR      (PPD_HDR + 0x4)                 /* message header size */
-
-/* PPD Flags */
-
-#define PPD_RSP         1                               /* respond to command */
-#define PPD_V_PS        1                               /* path select */
-#define PPD_M_PS        0x3
-#define  PPD_PSAUTO     0                               /* automatic */
-#define  PPD_PS0        1                               /* use path 0 */
-#define  PPD_PS1        2                               /* use path 1 */
-#define GET_PATH(x)     ((x >> PPD_V_PS) & PPD_M_PS)
-#define PPD_V_SP        4                               /* send path */
-#define PPD_M_SP        0x3
-#define PPD_V_M         4                               /* multiple value, blk xfer only */
-#define PPD_M_M         0x7
-#define PPD_P           0x80                            /* 0/1 for 512/576 data pkt size */
-                                                        /*  or packing format for messages */
-                                                        /*  to PDP 10/20 ports. */
-#define PPD_FORCE       0x80                            /* force reset */
-#define PPD_DSTART      0x80                            /* default start addr */
-#define PPD_EXTCNT      0x80                            /* extended counters */
 
 /* Virtual Circuit States */
 
@@ -190,19 +125,6 @@ typedef struct {
     uint32    state;                                    /* VC state */
 } VCD;
 
-/* Block Transfer Descriptor */
-
-typedef struct {
-    t_bool    incomplete;                               /* Transfer is incomplete (true/false) */
-    uint8     opcode;                                   /* The transfer type */
-    uint32    total_data_len;                           /* Bytes remaining of transfer */
-    uint32    data_pte;                                 /* PTE of first page of buffer */
-    uint32    data_offset;                              /* Offset into buffer */
-    uint32    start_offset;                             /* Current buffer pointer */
-    uint32    page_offset;                              /* Offset into buffer */
-    uint8     conf_buf[0x2c];                           /* Optional buffer for confirm */
-} BLKTF;
-
 typedef struct {
   uint8       port;
   CI_PKT      pkt;
@@ -230,7 +152,6 @@ uint32 ci_node;                                         /* local port number */
 uint32 ci_state;                                        /* port state */
 
 VCD ci_vcd[CI_MAX_NODES];                               /* VC descriptors */
-BLKTF blktf_table[CI_MAX_NODES];                        /* block transfer descriptors */
 CI_QUE ci_rx_queue;                                     /* packet receive queue */
 CI_QUE ci_tx_queue;                                     /* packet transmit queue */
 
@@ -262,8 +183,6 @@ t_stat ci_idrec (CI_PKT *pkt);
 t_stat ci_datrec (CI_PKT *pkt);
 t_stat ci_snddatrec (CI_PKT *pkt);
 t_stat ci_cnfrec (CI_PKT *pkt);
-t_stat ci_send_data (int32 opcode, uint8 *buffer, int32 port, int32 path);
-t_stat ci_receive_data (int32 opcode, int32 src, uint8 *buffer);
 t_stat ci_open_vc (uint8 port);
 t_stat ci_close_vc (uint8 port);
 void ci_fail_vc (uint8 port);
@@ -275,6 +194,8 @@ void ciq_insert (CI_QUE *que, uint8 port, CI_PKT *pkt); /* insert item into FIFO
 extern t_stat ci_receive (CI_PKT *pkt);
 extern t_stat ci_respond (CI_PKT *pkt);
 extern t_stat ci_dispose (CI_PKT *pkt);
+extern t_stat ci_send_data (CI_PKT *pkt);
+extern t_stat ci_receive_data (CI_PKT *pkt);
 
 //
 // TODO: Need generic read/write block functions in GVP code.
@@ -646,7 +567,7 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "==> SNDDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
 
-ci_send_data (OPC_SNDDAT, &buffer[0], port, path);
+ci_send_data (pkt);
 
 if (pkt->data[PPD_FLAGS] & PPD_RSP) {                   /* response requested? */
     sim_debug (DBG_WRN, &ci_dev, "  SNDDAT response requested!\n");
@@ -828,6 +749,7 @@ switch (dg_type) {
         break;
 }
 
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 ci_receive (pkt);                                       /* pass it to system */
 }
 
@@ -847,23 +769,31 @@ t_stat r;
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 
-//if (VC_OPEN (port))                                     /* don't send ID once VC is open */
-//    return SCPE_OK;
 sim_debug (DBG_REQID, &ci_dev, "<== REQREC, src: %d, path: %s\n", port, ci_path_names[path]);
-//pkt->data[PPD_OPC] = OPC_REQID;                         /* set opcode */
-ci_receive (pkt);
-return SCPE_OK;
+//ci_receive (pkt);
+//return SCPE_OK;
 
 pkt->data[PPD_PORT] = port;                             /* add remote port number */
 pkt->data[PPD_STATUS] = 0;                              /* status: OK */
 pkt->data[PPD_OPC] = OPC_RETID;                         /* set opcode */
 pkt->data[PPD_FLAGS] &= ~PPD_RSP;                       /* clear response flag */
 pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);             /* add send path */
-CI_PUT32 (pkt->data, 0x10, 0);                          /* transaction ID low (MBZ to trigger START) */
+if (VC_OPEN (port)) {                                   /* don't send ID once VC is open? */
+    CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
+    }
+else {
+    CI_PUT32 (pkt->data, 0x10, 0);                      /* transaction ID low (MBZ to trigger START) */
+    }
 CI_PUT32 (pkt->data, 0x14, 0);                          /* transaction ID high (MBZ to trigger START) */
+#if 1                                                   /* CI780, CI750 */
 CI_PUT32 (pkt->data, 0x18, 0x80000002);                 /* remote port type */
 CI_PUT32 (pkt->data, 0x1c, 0x00700040);                 /* code revision */
 CI_PUT32 (pkt->data, 0x20, 0xFFFF0F00);                 /* function mask */
+#else                                                   /* SHAC */
+CI_PUT32 (pkt->data, 0x18, 0x80000022);                 /* remote port type */
+CI_PUT32 (pkt->data, 0x1c, 0x03060D22);                 /* code revision */
+CI_PUT32 (pkt->data, 0x20, 0xFFFF0D00);                 /* function mask */
+#endif
 pkt->data[0x24] = 0x0;                                  /* resetting port */
 // TODO: should also respond when disabled?
 pkt->data[0x25] = 0x4;                                  /* port state (maint = 0, state = enabled) */
@@ -894,8 +824,8 @@ t_stat ci_reqdatrec (CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "<== REQDATREC, src: %d, path: %s\n", port, ci_path_names[path]);
-ci_send_data (OPC_RETDAT, pkt->data, port, path);
-sim_debug (DBG_BLKTF, &ci_dev, "==> RETDAT, dest: %d\n", port);
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
+return ci_send_data (pkt);
 }
 
 /*               < IDREC >                 *
@@ -926,18 +856,11 @@ t_stat ci_datrec (CI_PKT *pkt)
 {
 t_stat r;
 uint32 port = pkt->data[PPD_PORT];
-r = ci_receive_data (pkt->data[PPD_OPC], port, pkt->data);
+uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+r = ci_receive_data (pkt);
 if (r != SCPE_OK)
     return r;
-//ci_get_mfq (pkt);
-// TOOD: Fix this once CIQBA block transfers are understood
-#if 0
-msg_size = 0x2c;
-// TODO: how to handle confirmation buffer?
-// create packet from scratch?
-//ci_write_packet (pkt, msg_size, blktf_table[port].conf_buf);
-#endif
-sim_debug (DBG_BLKTF, &ci_dev, "putting packet on queue\n");
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return ci_receive (pkt);                                /* Pass it to system */
 }
 
@@ -946,15 +869,8 @@ t_stat ci_snddatrec (CI_PKT *pkt)
 t_stat r;
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-// TOOD: Fix this once CIQBA block transfers are understood
-#if 0
-r = ci_receive_data (pkt->data[PPD_OPC], port, pkt->data);
-if (r != SCPE_OK)
-    return r;
-r = ci_send_packet (blktf_table[port].conf_buf, 0x2c, OPC_RETCNF, port, path);
-#endif
-sim_debug (DBG_BLKTF, &ci_dev, "==> RETCNF, dest: %d, path: %d\n", port, path);
-return r;
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
+return ci_receive_data (pkt);
 }
 
 t_stat ci_cnfrec (CI_PKT *pkt)
@@ -962,6 +878,7 @@ t_stat ci_cnfrec (CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "<== CNFREC, src: %d, path: %s\n", port, ci_path_names[path]);
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 ci_receive (pkt);                                       /* Pass it to system */
 }
 
@@ -1032,16 +949,6 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 opcode = pkt->data[PPD_OPC];
 CI_PKT tpkt;
 
-// Packet header needs to contain:
-    // Size
-    // Priority (ci_pri)
-    // Local TCP port (ci_tcp_port)
-    // Local port number
-    // CI path - Already in PPD heqader?
-    // Data type (PPD or block transfer)?
-    //   Maybe just have a flag for continuation packets?
-
-// Need to extract common fields (path, port)
 memcpy (&tpkt, pkt, sizeof (CI_PKT));                   /* make local copy */
 
 CI_PUT16 (tpkt.data, 0x0, size);
@@ -1072,27 +979,15 @@ return SCPE_OK;
 
 t_stat ci_receive_packet (CI_PKT *pkt, uint8 port)
 {
-uint32 opcode = pkt->data[PPD_OPC];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 
-if (path == PPD_PSAUTO) {                               /* auto select path? */
+if (path == PPD_PSAUTO)                                 /* auto select path? */
     path = PPD_PS1;                                     /* default to path 1 */
-}
-
-if (blktf_table[port].incomplete) {
-    if ((opcode != OPC_SNDDAT) && (opcode != OPC_DATREC)) {
-        pkt->data[PPD_OPC] |= OPC_M_RECV;               /* convert to rcv opcode */
-        pkt->data[PPD_PORT] = port;                     /* set source port */
-        pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);     /* set send path */
-        pkt->data[PPD_FLAGS] &= ~PPD_RSP;               /* clear response bit */
-        }
-    }
-else {
-    pkt->data[PPD_OPC] |= OPC_M_RECV;                   /* convert to rcv opcode */
-    pkt->data[PPD_PORT] = port;                         /* set source port */
-    pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);         /* set send path */
-    pkt->data[PPD_FLAGS] &= ~PPD_RSP;                   /* clear response bit */
-    }
+pkt->data[PPD_OPC] |= OPC_M_RECV;                       /* convert to rcv opcode */
+pkt->data[PPD_PORT] = port;                             /* set source port */
+pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);             /* set send path */
+pkt->data[PPD_FLAGS] &= ~PPD_RSP;                       /* clear response bit */
+pkt->addr = 0;
 
 return ci_ppd (pkt);
 }
@@ -1282,14 +1177,6 @@ for (i = 0; i < CI_MAX_NODES; i++) {
     ci_vcd[i].ipa = 0;
     ci_vcd[i].ipp = 0;
     ci_vcd[i].state = VCST_CLOSED;
-
-    blktf_table[i].incomplete = 0;                      /* clear block transfer table */
-    blktf_table[i].opcode = 0;
-    blktf_table[i].total_data_len = 0;
-    blktf_table[i].data_pte = 0;
-    blktf_table[i].data_offset = 0;
-    blktf_table[i].start_offset = 0;
-    blktf_table[i].page_offset = 0;
     }
 
 srand (time (NULL));

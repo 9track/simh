@@ -639,30 +639,26 @@ t_stat ci_dequeue (CI_QUEUE *queue, CI_PKT *pkt, t_bool keep)
 {
 uint32 entry, i;
 
-//for (i = 0; i < queue->entries; i++) {
 i = queue->ptr;
-    entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
-//    sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry[%d] = %08X\n", i, entry);
-    if (entry & RENT_CIQBA_OWNED) {
-        pkt->addr = entry & RENT_ADDR;
-        pkt->size = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
-        pkt->size = (pkt->size << 2);
-        sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry = %d, addr = %X, size = %X\n", i, pkt->addr, pkt->size);
-        if (keep)
-            entry = RENT_CIQBA_OWNED;
-        else
-            entry = entry & RENT_ADDR;
-//        entry = 0;
-        queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
-        queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
-        if (!keep) {
-            queue->ptr++;
-            if (queue->ptr == queue->entries)
-                queue->ptr = 0;
-            }
-        return SCPE_OK;
+entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
+if (entry & RENT_CIQBA_OWNED) {
+    pkt->addr = entry & RENT_ADDR;
+    pkt->size = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
+    pkt->size = (pkt->size << 2);
+    sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry = %d, addr = %X, size = %X\n", i, pkt->addr, pkt->size);
+    if (keep)
+        entry = RENT_CIQBA_OWNED;
+    else
+        entry = entry & RENT_ADDR;
+    queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
+    queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
+    if (!keep) {
+        queue->ptr++;
+        if (queue->ptr == queue->entries)
+            queue->ptr = 0;
         }
-//    }
+    return SCPE_OK;
+    }
 return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
 }
 
@@ -671,38 +667,33 @@ t_stat ci_enqueue (CI_QUEUE *queue, CI_PKT *pkt, t_bool internal)
 uint32 entry, i;
 uint32 size;
 
-//for (i = 0; i < queue->entries; i++) {
 i = queue->ptr;
-    entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
-//    sim_debug (DBG_REG, &ci_dev, "ci_enqueue: entry[%d] = %08X\n", i, entry);
-    if (entry == RENT_CIQBA_OWNED) {                    /* owned, empty? */
-        sim_debug (DBG_REG, &ci_dev, "ci_enqueue: entry = %d, addr = %X, size = %X\n", i, pkt->addr, pkt->size);
-        entry = pkt->addr & RENT_ADDR;
-        size = pkt->size >> 2;
-        entry = entry | (size << RENT_V_LENGTH);
-        if (!internal)
-            entry = entry | RENT_PACKET_TYPE;
-        queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
-        queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
-        queue->ptr++;
-        if (queue->ptr == queue->entries)
-            queue->ptr = 0;
-        return SCPE_OK;
-        }
-//    }
+entry = queue->ring[i*2] | (queue->ring[i*2+1] << 16);  // May need a macro?
+if (entry == RENT_CIQBA_OWNED) {                    /* owned, empty? */
+    sim_debug (DBG_REG, &ci_dev, "ci_enqueue: entry = %d, addr = %X, size = %X\n", i, pkt->addr, pkt->size);
+    entry = pkt->addr & RENT_ADDR;
+    size = pkt->size >> 2;
+    entry = entry | (size << RENT_V_LENGTH);
+    if (!internal)
+        entry = entry | RENT_PACKET_TYPE;
+    queue->ring[i*2] = entry & 0xFFFF;  // Also may need a macro
+    queue->ring[i*2+1] = (entry >> 16) & 0xFFFF;
+    queue->ptr++;
+    if (queue->ptr == queue->entries)
+        queue->ptr = 0;
+    return SCPE_OK;
+    }
 sim_debug (DBG_REG, &ci_dev, "ci_enqueue failed\n");
 return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
 }
 
-t_stat ci_put_dfq_int (CI_PKT *pkt)
+t_bool ci_can_enq (CI_QUEUE *queue)
 {
-// Put to dispose queue
-ci_csr |= CSR_DISPOSE_ATTN;
-if (ci_ccr & CCR_ENABLE_INT)
-    SET_INT (CI);
-sim_debug (DBG_REG, &ci_dev, "ci_put_dfq_int\n");
-pkt->size = 0;
-return ci_enqueue (&ci_dsp, pkt, TRUE);
+uint32 entry;
+entry = queue->ring[queue->ptr*2] | (queue->ring[queue->ptr*2+1] << 16);  // May need a macro?
+if (entry == RENT_CIQBA_OWNED)                          /* owned, empty? */
+    return TRUE;
+return FALSE;
 }
 
 /*
@@ -732,7 +723,6 @@ swflags = 0;
 if (flags & 0x8)   // PPD_M_LP
     swflags = swflags | 0x1;
 swflags |= ((flags << 3) & 0x30); // Add received path
-//flags = swflags | (flags & 0xCF);
 pkt->data[0xB] = (length >> 8) & 0xFF;
 pkt->data[0xC] = length & 0xFF;
 pkt->data[0xD] = ci_node;
@@ -740,43 +730,50 @@ pkt->data[0xE] = ~ci_node;
 pkt->data[0xF] = port;
 pkt->data[0x10] = opc;
 pkt->data[0x11] = swflags;
-ci_write_packet (pkt, 0x12); // CIPPD_K_HEADER_LENGTH
+}
+
+t_stat ci_dispose_int (CI_PKT *pkt, t_bool internal)
+{
+sim_debug (DBG_REG, &ci_dev, "ci_dispose\n");
+ci_csr |= CSR_DISPOSE_ATTN;
+if (ci_ccr & CCR_ENABLE_INT)
+    SET_INT (CI);
+pkt->size = 0;
+return ci_enqueue (&ci_dsp, pkt, internal);
 }
 
 t_stat ci_dispose (CI_PKT *pkt)
 {
-// Put to dispose queue
-ci_csr |= CSR_DISPOSE_ATTN;
-if (ci_ccr & CCR_ENABLE_INT)
-    SET_INT (CI);
-sim_debug (DBG_REG, &ci_dev, "ci_dispose\n");
-pkt->size = 0;
-return ci_enqueue (&ci_dsp, pkt, FALSE);
+return ci_dispose_int (pkt, FALSE);
 }
 
 t_stat ci_respond (CI_PKT *pkt)
 {
+sim_debug (DBG_REG, &ci_dev, "ci_respond\n");
 ci_write_packet (pkt, 0x10); // TODO: move header size definitions to vax_ci.h
-// Put to dispose queue
 ci_csr |= CSR_DISPOSE_ATTN;
 if (ci_ccr & CCR_ENABLE_INT)
     SET_INT (CI);
-sim_debug (DBG_REG, &ci_dev, "ci_respond\n");
 pkt->size = 0;
 return ci_enqueue (&ci_dsp, pkt, FALSE);
 }
 
-t_stat ci_receive (CI_PKT *pkt)
+t_stat ci_receive_int (CI_PKT *pkt, t_bool internal)
 {
+sim_debug (DBG_REG, &ci_dev, "ci_receive\n");
+if (!internal)
+    ci_fmt_pkt (pkt);
 ci_dequeue (&ci_rcv, pkt, TRUE);
 ci_write_packet (pkt, pkt->length);
-ci_fmt_pkt (pkt);
-// Put to receive queue
 ci_csr |= CSR_RECEIVE_ATTN;
 if (ci_ccr & CCR_ENABLE_INT)
     SET_INT (CI);
-sim_debug (DBG_REG, &ci_dev, "ci_receive\n");
-return ci_enqueue (&ci_rcv, pkt, FALSE);
+return ci_enqueue (&ci_rcv, pkt, internal);
+}
+
+t_stat ci_receive (CI_PKT *pkt)
+{
+return ci_receive_int (pkt, FALSE);
 }
 
 /*
@@ -799,14 +796,14 @@ t_stat r;
 switch (pkt->data[PPD_OPC]) {
     case 0:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Host Query\n");
+        ci_dispose_int (pkt, TRUE);
         pkt->data[PPD_OPC] = 0x80;
-        ci_write_packet (pkt, 0x12); // CIPPD_K_HEADER_LENGTH
-        ci_put_dfq_int (pkt);
+        ci_receive_int (pkt, TRUE);
         break;
 
     case 1:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Host Init\n");
-        ci_put_dfq_int (pkt);
+        ci_dispose_int (pkt, TRUE);
         break;
 
     case 2:
@@ -834,7 +831,7 @@ switch (pkt->data[PPD_OPC]) {
             }
         else
             sim_debug (DBG_REG, &ci_dev, "CIQBA VC status: ERROR\n");
-        ci_put_dfq_int (pkt);
+        ci_dispose_int (pkt, TRUE);
         break;
 
     case 5:
@@ -855,7 +852,9 @@ t_stat ci_svc_queue (CI_QUEUE *queue, uint32 *processed)
 {
 CI_PKT pkt;
 t_stat r = SCPE_OK;
-while (ci_dequeue (queue, &pkt, FALSE) == SCPE_OK) {
+while (ci_can_enq (&ci_dsp)) {
+    if (ci_dequeue (queue, &pkt, FALSE) != SCPE_OK)
+        break;
     *processed = *processed + 1;
     r = ci_read_packet (&pkt, pkt.size);
     if (r != SCPE_OK) {
@@ -864,10 +863,16 @@ while (ci_dequeue (queue, &pkt, FALSE) == SCPE_OK) {
         }
     pkt.length = pkt.size;
     sim_debug (DBG_REG, &ci_dev, "Processing packet\n");
-    if ((pkt.data[PPD_TYPE] == 0x3B) || (pkt.data[PPD_TYPE] == 0x3C)) /* SCS_DG or SCS_MSG */
-        r = ci_ppd (&pkt);
-    else /* CIQBA message */
-        r = ciqba_msg (&pkt);
+    switch (pkt.data[PPD_TYPE]) {
+        case DYN_SCSDG:
+        case DYN_SCSMSG:
+            r = ci_ppd (&pkt);
+            break;
+            
+        default:
+            r = ciqba_msg (&pkt);
+            break;
+            }
     if (r != SCPE_OK) {
         sim_debug (DBG_REG, &ci_dev, "Process packet failed\n");
         break;
@@ -907,7 +912,6 @@ while (pq_syms[i].symbol != NULL) {
         sprintf (ci_sym_text, "%s+%X", pq_syms[i-1].symbol, (addr - pq_syms[i-1].value));
         return ci_sym_text;
         }
-//        return pq_syms[i].symbol;
     i++;
     }
 return "";

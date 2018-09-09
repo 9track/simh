@@ -568,11 +568,14 @@ return SCPE_IERR;
 
 t_stat ci_receive (CI_PKT *pkt)
 {
+t_stat r;
 if (pkt->addr == 0) {
     if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
-        return ci_get_mfq (pkt);
+        r = ci_get_mfq (pkt);
     else
-        return ci_get_dfq (pkt);
+        r = ci_get_dfq (pkt);
+    if (r != SCPE_OK)
+        return r;
     }
 ci_write_packet (pkt, pkt->length);
 return ci_put_rsq (pkt);

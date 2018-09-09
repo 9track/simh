@@ -338,7 +338,8 @@ DIB ci_dib = {
     1, IVCL (CI), 0, { &ci_inta }
     };
 
-UNIT ci_unit = { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, VTB_NVR_SIZE) };
+UNIT ci_unit = { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
+//UNIT ci_unit = { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, VTB_NVR_SIZE) };
 
 REG ci_reg[] = {
     { NULL }
@@ -374,7 +375,7 @@ DEVICE ci_dev = {
     "CI", &ci_unit, ci_reg, ci_mod,
     1, DEV_RDX, 20, 1, DEV_RDX, 16,
     NULL, NULL, &ci_reset,
-    NULL, NULL, NULL,
+    NULL, &ci_attach, &ci_detach,
     &ci_dib, DEV_QBUS | DEV_DEBUG, 0,
     ci_debug, 0, 0
     };
@@ -598,9 +599,11 @@ t_stat ci_read_packet (CI_PKT *pkt, size_t length)
 {
 uint32 i;
 memset (pkt->data, 0, PPD_TYPE);
-if (Map_ReadB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE]))
-    return SCPE_EOF;  // Need own status codes
 sim_debug (DBG_REG, &ci_dev, "ci_read_packet (%d bytes):\n", length);
+if (Map_ReadB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE])) {
+    sim_debug (DBG_REG, &ci_dev, "read failed\n");
+    return SCPE_EOF;  // Need own status codes
+    }
 for (i = 0; i < length; i++) {
     if ((i % 4) == 0)
         sim_debug (DBG_REG, &ci_dev, "\n");
@@ -613,9 +616,11 @@ return SCPE_OK;
 t_stat ci_write_packet (CI_PKT *pkt, size_t length)
 {
 uint32 i;
-if (Map_WriteB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE]))
-    return SCPE_EOF;
 sim_debug (DBG_REG, &ci_dev, "ci_write_packet (%d bytes):\n", length);
+if (Map_WriteB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE])) {
+    sim_debug (DBG_REG, &ci_dev, "write failed\n");
+    return SCPE_EOF;
+    }
 for (i = 0; i < length; i++) {
     if ((i % 4) == 0)
         sim_debug (DBG_REG, &ci_dev, "\n");
@@ -696,6 +701,25 @@ if (entry == RENT_CIQBA_OWNED)                          /* owned, empty? */
 return FALSE;
 }
 
+t_bool ci_can_deq (CI_QUEUE *queue)
+{
+uint32 entry;
+entry = queue->ring[queue->ptr*2] | (queue->ring[queue->ptr*2+1] << 16);  // May need a macro?
+if (entry & RENT_CIQBA_OWNED)
+    return TRUE;
+return FALSE;
+}
+
+t_bool ci_can_dispose ()
+{
+return ci_can_enq (&ci_dsp);
+}
+
+t_bool ci_can_receive ()
+{
+return ci_can_deq (&ci_rcv);
+}
+
 /*
 CIPPD_B_LEN_HI = ^X0000000B
 CIPPD_B_LEN_LO = ^X0000000C
@@ -730,6 +754,8 @@ pkt->data[0xE] = ~ci_node;
 pkt->data[0xF] = port;
 pkt->data[0x10] = opc;
 pkt->data[0x11] = swflags;
+if (pkt->length < 0x12)
+    pkt->length = 0x12;
 }
 
 t_stat ci_dispose_int (CI_PKT *pkt, t_bool internal)
@@ -760,10 +786,13 @@ return ci_enqueue (&ci_dsp, pkt, FALSE);
 
 t_stat ci_receive_int (CI_PKT *pkt, t_bool internal)
 {
+t_stat r;
 sim_debug (DBG_REG, &ci_dev, "ci_receive\n");
 if (!internal)
     ci_fmt_pkt (pkt);
-ci_dequeue (&ci_rcv, pkt, TRUE);
+r = ci_dequeue (&ci_rcv, pkt, TRUE);
+if (r != SCPE_OK)
+    sim_debug (DBG_REG, &ci_dev, "ci_dequeue failed\n");
 ci_write_packet (pkt, pkt->length);
 ci_csr |= CSR_RECEIVE_ATTN;
 if (ci_ccr & CCR_ENABLE_INT)

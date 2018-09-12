@@ -581,6 +581,11 @@ ci_write_packet (pkt, pkt->length);
 return ci_put_rsq (pkt);
 }
 
+t_bool ci_can_receive ()
+{
+return TRUE;
+}
+
 /* Reset CI adapter */
 
 t_stat ci_dec_reset (DEVICE *dptr)

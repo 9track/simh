@@ -105,6 +105,16 @@
 #define RENT_PACKET_TYPE     0x40000000
 #define RENT_CIQBA_OWNED     0x80000000
 
+/* CIQBA PPD format */
+
+#define CIPPD_LEN_HI    0x0B
+#define CIPPD_LEN_LO    0x0C
+#define CIPPD_DEST      0x0D
+#define CIPPD_NOT_DEST  0x0E
+#define CIPPD_SRC       0x0F
+#define CIPPD_OPC       0x10
+#define CIPPD_SEQ_CNTRL 0x11
+
 #define IOBA_CI              (IOPAGEBASE + 0xE00)
 #define IOLN_CI              0x80
 
@@ -317,6 +327,8 @@ t_bool ci_vc_open[32];
 
 t_stat ci_rd (int32 *data, int32 PA, int32 access);
 t_stat ci_wr (int32 data, int32 PA, int32 access);
+t_stat ciqba_attach (UNIT *uptr, CONST char *cptr);
+t_stat ciqba_detach (UNIT *uptr);
 t_stat ciqba_svc (UNIT *uptr);
 int32 ci_vtb_rd (int32 pa);
 void ci_vtb_wr (int32 pa, int32 data);
@@ -338,8 +350,10 @@ DIB ci_dib = {
     1, IVCL (CI), 0, { &ci_inta }
     };
 
-UNIT ci_unit = { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
-//UNIT ci_unit = { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, VTB_NVR_SIZE) };
+UNIT ci_unit[] = {
+    { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_ATTABLE, 0) },
+    { UDATA (&ciqba_svc, UNIT_IDLE|UNIT_FIX|UNIT_ATTABLE|UNIT_BUFABLE|UNIT_MUSTBUF, VTB_NVR_SIZE) }
+    };
 
 REG ci_reg[] = {
     { NULL }
@@ -372,10 +386,10 @@ DEBTAB ci_debug[] = {
     };
 
 DEVICE ci_dev = {
-    "CI", &ci_unit, ci_reg, ci_mod,
-    1, DEV_RDX, 20, 1, DEV_RDX, 16,
+    "CI", ci_unit, ci_reg, ci_mod,
+    2, DEV_RDX, 20, 1, DEV_RDX, 16,
     NULL, NULL, &ci_reset,
-    NULL, &ci_attach, &ci_detach,
+    NULL, &ciqba_attach, &ciqba_detach,
     &ci_dib, DEV_QBUS | DEV_DEBUG, 0,
     ci_debug, 0, 0
     };
@@ -563,7 +577,7 @@ int32 ci_vtb_rd (int32 pa)
 {
 int32 rg;
 int32 data = 0;
-uint16 *nvr = (uint16 *) ci_unit.filebuf;
+uint16 *nvr = (uint16 *) ci_unit[1].filebuf;
 
 if ((pa >= VTB_NVR_BASE) && (pa < VTB_NVR_BASE+VTB_NVR_SIZE)) { /* NovRam */
     rg = (pa >> 1) & 0xF;
@@ -576,13 +590,13 @@ return data;
 void ci_vtb_wr (int32 pa, int32 data)
 {
 int32 rg;
-uint16 *nvr = (uint16 *) ci_unit.filebuf;
+uint16 *nvr = (uint16 *) ci_unit[1].filebuf;
 
 sim_debug (DBG_REG, &ci_dev, "ci_vtb_wr: %08X = %04X at %08X\n", pa, data, fault_PC);
 if ((pa >= VTB_NVR_BASE) && (pa < VTB_NVR_BASE+VTB_NVR_SIZE)) { /* NovRam */
     rg = (pa >> 1) & 0xF;
     nvr[rg] = data;
-    ci_unit.hwmark = (rg << 1);
+    ci_unit[1].hwmark = (rg << 1);
     }
 }
 
@@ -650,6 +664,10 @@ if (entry & RENT_CIQBA_OWNED) {
     pkt->addr = entry & RENT_ADDR;
     pkt->size = (entry & RENT_LENGTH) >> RENT_V_LENGTH;
     pkt->size = (pkt->size << 2);
+    if (entry & RENT_PACKET_TYPE)
+        pkt->type = 1;
+    else
+        pkt->type = 0;
     sim_debug (DBG_REG, &ci_dev, "ci_dequeue: entry = %d, addr = %X, size = %X\n", i, pkt->addr, pkt->size);
     if (keep)
         entry = RENT_CIQBA_OWNED;
@@ -720,42 +738,44 @@ t_bool ci_can_receive ()
 return ci_can_deq (&ci_rcv);
 }
 
-/*
-CIPPD_B_LEN_HI = ^X0000000B
-CIPPD_B_LEN_LO = ^X0000000C
-CIPPD_B_DEST = ^X0000000D
-CIPPD_B_NOT_DEST = ^X0000000E
-CIPPD_B_SRC = ^X0000000F
-CIPPD_B_OPC = ^X00000010
-CIPPD_B_SEQ_CNTRL = ^X00000011
-
-PPD_B_SWFLAG = ^X0000000B
-PPD_B_PORT = ^X0000000C
-PPD_B_STATUS = ^X0000000D
-PPD_B_OPC = ^X0000000E
-PPD_B_FLAGS = ^X0000000F
-PPD_W_LENGTH = ^X00000010
-*/
-void ci_fmt_pkt (CI_PKT *pkt)
+void ci_fmt_receive (CI_PKT *pkt)
 {
-uint32 swflags = pkt->data[0xB];
-uint32 port = pkt->data[0xC];
-uint32 opc = pkt->data[0xE];
-uint32 flags = pkt->data[0xF];
-uint32 length = CI_GET16 (pkt->data, 0x10) + 0x12; // CIPPD_K_HEADER_LENGTH
+uint32 swflags = pkt->data[PPD_SWFLAG];
+uint32 port = pkt->data[PPD_PORT];
+uint32 opc = pkt->data[PPD_OPC] & ~OPC_M_RECV;
+uint32 flags = pkt->data[PPD_FLAGS];
+uint32 i;
+
+if ((opc != OPC_SNDDG) && (opc != OPC_SNDMSG)) {
+    for (i = pkt->length; i >= PPD_MTYPE; i--)
+        pkt->data[i] = pkt->data[i-2];
+    }
+
 swflags = 0;
 if (flags & 0x8)   // PPD_M_LP
     swflags = swflags | 0x1;
 swflags |= ((flags << 3) & 0x30); // Add received path
-pkt->data[0xB] = (length >> 8) & 0xFF;
-pkt->data[0xC] = length & 0xFF;
-pkt->data[0xD] = ci_node;
-pkt->data[0xE] = ~ci_node;
-pkt->data[0xF] = port;
-pkt->data[0x10] = opc;
-pkt->data[0x11] = swflags;
+pkt->data[CIPPD_LEN_HI] = (pkt->length >> 8) & 0xFF;
+pkt->data[CIPPD_LEN_LO] = pkt->length & 0xFF;
+pkt->data[CIPPD_DEST] = ci_node;
+pkt->data[CIPPD_NOT_DEST] = ~ci_node;
+pkt->data[CIPPD_SRC] = port;
+pkt->data[CIPPD_OPC] = opc;
+pkt->data[CIPPD_SEQ_CNTRL] = swflags;
 if (pkt->length < 0x12)
     pkt->length = 0x12;
+}
+
+void ci_fmt_send (CI_PKT *pkt)
+{
+uint32 opc = pkt->data[PPD_OPC];
+uint32 i;
+
+if ((opc != OPC_SNDDG) && (opc != OPC_SNDMSG)) {
+    for (i = PPD_LENGTH; i < pkt->length - 2; i++)
+        pkt->data[i] = pkt->data[i+2];
+    pkt->length = pkt->length - 2;
+    }
 }
 
 t_stat ci_dispose_int (CI_PKT *pkt, t_bool internal)
@@ -789,7 +809,7 @@ t_stat ci_receive_int (CI_PKT *pkt, t_bool internal)
 t_stat r;
 sim_debug (DBG_REG, &ci_dev, "ci_receive\n");
 if (!internal)
-    ci_fmt_pkt (pkt);
+    ci_fmt_receive (pkt);
 r = ci_dequeue (&ci_rcv, pkt, TRUE);
 if (r != SCPE_OK)
     sim_debug (DBG_REG, &ci_dev, "ci_dequeue failed\n");
@@ -827,7 +847,7 @@ switch (pkt->data[PPD_OPC]) {
         sim_debug (DBG_REG, &ci_dev, "CIQBA Host Query\n");
         ci_dispose_int (pkt, TRUE);
         pkt->data[PPD_OPC] = 0x80;
-        ci_receive_int (pkt, TRUE);
+        ci_receive_int (pkt, TRUE);                     /* FIXME: check for space in ring */
         break;
 
     case 1:
@@ -837,10 +857,12 @@ switch (pkt->data[PPD_OPC]) {
 
     case 2:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Promisc Enable\n");
+        ci_dispose_int (pkt, TRUE);
         break;
 
     case 3:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Promisc Disable\n");
+        ci_dispose_int (pkt, TRUE);
         break;
 
     case 4:
@@ -865,11 +887,14 @@ switch (pkt->data[PPD_OPC]) {
 
     case 5:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Map\n");
+        ci_dispose_int (pkt, TRUE);
         break;
 
     case 6:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Unmap\n");
+        ci_dispose_int (pkt, TRUE);
         break;
+
     default:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Unknown Message\n");
         break;
@@ -891,17 +916,12 @@ while (ci_can_enq (&ci_dsp)) {
         break;
         }
     pkt.length = pkt.size;
-    sim_debug (DBG_REG, &ci_dev, "Processing packet\n");
-    switch (pkt.data[PPD_TYPE]) {
-        case DYN_SCSDG:
-        case DYN_SCSMSG:
-            r = ci_ppd (&pkt);
-            break;
-            
-        default:
-            r = ciqba_msg (&pkt);
-            break;
-            }
+    ci_fmt_send (&pkt);
+    sim_debug (DBG_REG, &ci_dev, "Processing packet: type = %d\n", pkt.type);
+    if (pkt.type == 1)
+        r = ci_ppd (&pkt);
+    else
+        r = ciqba_msg (&pkt);
     if (r != SCPE_OK) {
         sim_debug (DBG_REG, &ci_dev, "Process packet failed\n");
         break;
@@ -950,6 +970,22 @@ int32 ci_inta (void)
 {
 DIB *dibp = (DIB *)ci_dev.ctxt;
 return dibp->vec;
+}
+
+t_stat ciqba_attach (UNIT *uptr, CONST char *cptr)
+{
+if (uptr == &ci_unit[0])
+    return ci_attach (uptr, cptr);
+else
+    return attach_unit (uptr, cptr);
+}
+
+t_stat ciqba_detach (UNIT *uptr)
+{
+if (uptr == &ci_unit[0])
+    return ci_detach (uptr);
+else
+    return detach_unit (uptr);
 }
 
 /* Reset CI adapter */

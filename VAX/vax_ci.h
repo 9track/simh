@@ -72,8 +72,8 @@
 /* PPD Sizes */
 
 #define PPD_HDR         0x10                            /* PPD header size */
-#define PPD_DGHDR       (PPD_HDR + 0x4)                 /* datagram header size */
-#define PPD_MSGHDR      (PPD_HDR + 0x4)                 /* message header size */
+#define PPD_DGHDR       (PPD_HDR + 0x2)                 /* datagram header size */
+#define PPD_MSGHDR      (PPD_HDR + 0x2)                 /* message header size */
 
 /* Transmit Opcodes */
 
@@ -152,6 +152,7 @@
 #define CI_MAX_NODES    16
 
 typedef struct {
+    uint32 type;
     uint32 addr;
     size_t size;
     size_t length;

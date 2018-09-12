@@ -163,7 +163,6 @@ extern FILE *sim_log;
 extern FILE *sim_deb;
 extern int32 sim_switches;
 extern int32 tmxr_poll;
-extern UNIT ci_unit;
 
 t_stat ci_snddg (CI_PKT *pkt);
 t_stat ci_sndmsg (CI_PKT *pkt);
@@ -209,10 +208,11 @@ void ci_set_state (uint32 state)
 {
 int32 r;
 uint32 ipa, ipp;
+UNIT *uptr = &ci_dev.units[0];
 
 if (state < PORT_INIT) {                                /* change to uninit */
     if (ci_state >= PORT_INIT) {                        /* currently initialised? */
-        sim_cancel (&ci_unit);                          /* stop poll */
+        sim_cancel (uptr);                              /* stop poll */
         sim_debug (DBG_CONN, &ci_dev, "deactivating unit\n");
         ciq_clear (&ci_rx_queue);                       /* clear queue */
         do r = ci_read_sock_udp (ci_multi_sock, rcv_pkt.data, CI_MAXFR, &ipa, &ipp);
@@ -221,7 +221,7 @@ if (state < PORT_INIT) {                                /* change to uninit */
     }
 else if (state >= PORT_INIT) {                          /* change to init */
     if (ci_state < PORT_INIT) {                         /* currently uninit? */
-        sim_clock_coschedule (&ci_unit, tmxr_poll);     /* start poll */
+        sim_clock_coschedule (uptr, tmxr_poll);         /* start poll */
         sim_debug (DBG_CONN, &ci_dev, "activating unit\n");
         }
    }
@@ -636,7 +636,7 @@ else
  *                                     */
 t_stat ci_sndlb (CI_PKT *pkt)
 {
-UNIT *uptr = &ci_unit;
+UNIT *uptr = &ci_dev.units[0];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_LCMD, &ci_dev, "==> SNDLB, path: %s\n", ci_path_names[path]);
 // TODO: should this go via normal ci_send_packet?
@@ -1316,6 +1316,7 @@ t_stat ci_port_reset (DEVICE *dptr)
 {
 int32 i;
 t_stat r;
+UNIT *uptr = &ci_dev.units[0];
 
 ci_state = PORT_UNINIT;
 
@@ -1345,7 +1346,7 @@ for (i = 0; i < CI_MAX_NODES; i++) {
 srand (time (NULL));
 ci_pri = (rand() % 100);                                /* generate priority */
 
-sim_cancel (&ci_unit);                                  /* stop poll */
+sim_cancel (uptr);                                      /* stop poll */
 return SCPE_OK;
 }
 

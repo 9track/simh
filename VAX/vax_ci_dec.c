@@ -154,7 +154,7 @@ for ( ;; ) {
         }
     pkt.length = length;
     ci_read_packet (&pkt, CI_MAXFR);
-    ci_ppd (&pkt);
+    ci_route_ppd (&pkt);
     }
 }
 
@@ -401,11 +401,39 @@ total_data_len -= data_len;
 
 if ((total_data_len == 0) && (pkt->data[PPD_OPC] == OPC_SNDDAT)) {
     pkt->data[PPD_OPC] = OPC_RETCNF;
-    r = ci_send_packet (pkt, data_len + CI_DATHDR);
-    if (r != SCPE_OK)
-        return r;
+    pkt->length = CI_DATHDR;
+    return ci_route_ppd (pkt);
     }
 return SCPE_OK;
+}
+
+t_stat ci_request_id (CI_PKT *pkt)
+{
+pkt->data[PPD_PORT] = port;                             /* add remote port number */
+pkt->data[PPD_STATUS] = 0;                              /* status: OK */
+pkt->data[PPD_OPC] = OPC_RETID;                         /* set opcode */
+pkt->data[PPD_FLAGS] &= ~PPD_RSP;                       /* clear response flag */
+pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);             /* add send path */
+if (VC_OPEN (port)) {                                   /* don't send ID once VC is open? */
+    CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
+    }
+else {
+    CI_PUT32 (pkt->data, 0x10, 0);                      /* transaction ID low (MBZ to trigger START) */
+    }
+CI_PUT32 (pkt->data, 0x14, 0);                          /* transaction ID high (MBZ to trigger START) */
+#if 0                                                   /* SHAC */
+CI_PUT32 (pkt->data, 0x18, 0x80000022);                 /* remote port type */
+CI_PUT32 (pkt->data, 0x1C, 0x03060D22);                 /* code revision */
+CI_PUT32 (pkt->data, 0x20, 0xFFFF0D00);                 /* function mask */
+#else                                                   /* CI780, CI750 */
+CI_PUT32 (pkt->data, 0x18, 0x80000002);                 /* remote port type */
+CI_PUT32 (pkt->data, 0x1C, 0x00700040);                 /* code revision */
+CI_PUT32 (pkt->data, 0x20, 0xFFFF0F00);                 /* function mask */
+#endif
+pkt->data[0x24] = 0x0;                                  /* resetting port */
+// TODO: should also respond when disabled?
+pkt->data[0x25] = 0x4;                                  /* port state (maint = 0, state = enabled) */
+return ci_route_ppd (pkt);
 }
 
 /* Read a packet from memory */
@@ -569,6 +597,17 @@ return SCPE_IERR;
 t_stat ci_receive (CI_PKT *pkt)
 {
 t_stat r;
+switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
+    case OPC_REQDATREC:
+        return ci_send_data (pkt);
+
+    case OPC_SNDDATREC:
+    case OPC_DATREC:
+        return ci_receive_data (pkt);
+
+    case OPC_REQREC:
+        return ci_request_id (pkt);
+        }
 if (pkt->addr == 0) {
     if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
         r = ci_get_mfq (pkt);

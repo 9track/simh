@@ -164,7 +164,7 @@ extern uint32 ci_node;
 extern DEVICE ci_dev;
 
 void ci_set_state (uint32 state);
-t_stat ci_ppd (CI_PKT *pkt);
+t_stat ci_route_ppd (CI_PKT *pkt);
 t_stat ci_send_packet (CI_PKT *pkt, size_t length);
 t_stat ci_receive_packet (CI_PKT *pkt, uint8 port);
 t_stat ci_open_vc (uint8 port);

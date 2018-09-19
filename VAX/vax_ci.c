@@ -171,6 +171,7 @@ t_stat ci_reqdat (CI_PKT *pkt);
 t_stat ci_retid (CI_PKT *pkt);
 t_stat ci_sndlb (CI_PKT *pkt);
 t_stat ci_snddat (CI_PKT *pkt);
+t_stat ci_retdat (CI_PKT *pkt);
 t_stat ci_invtc (CI_PKT *pkt);
 t_stat ci_setckt (CI_PKT *pkt);
 t_stat ci_rdcnt (CI_PKT *pkt);
@@ -229,49 +230,6 @@ ci_state = state;                                       /* update state */
 }
 
 #if 0
-// CIQBA
-uint32 ci_ppd_size (CI_PKT *pkt)
-{
-uint32 opcode = pkt->data[PPD_OPC];
-uint16 msg_size = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_DGHDR;
-
-switch (opcode) {
-
-    case OPC_SNDDG:
-    case OPC_SNDMSG:
-        return msg_size;
-
-    case OPC_REQID:
-        return PPD_HDR;
-
-    case OPC_REQDAT:
-        return 0x2C;
-
-    case OPC_RETID:
-    case OPC_SNDLB:
-    case OPC_SNDDAT:
-        return ci_snddat (pkt);
-
-    case OPC_INVTC:
-    case OPC_SETCKT:
-    case OPC_RDCNT:
-        return ci_rdcnt (pkt);
-
-    case OPC_DGREC:
-    case OPC_MSGREC:
-        return ci_msgrec (pkt);
-
-    case OPC_REQREC:
-    case OPC_REQDATREC:
-    case OPC_IDREC:
-    case OPC_DATREC:
-    case OPC_SNDDATREC:
-    case OPC_CNFREC:
-        return ci_cnfrec (pkt);
-        }
-return 0;
-}
-
 t_stat ci_route_ppd (CI_PKT *pkt)
 {
 uint32 opcode = pkt->data[PPD_OPC];
@@ -329,7 +287,7 @@ return SCPE_IOERR; // TODO: need local status
 }
 #endif
 
-t_stat ci_ppd (CI_PKT *pkt)
+t_stat ci_route_ppd (CI_PKT *pkt)
 {
 uint32 opcode = pkt->data[PPD_OPC];
 switch (opcode) {
@@ -354,6 +312,9 @@ switch (opcode) {
 
     case OPC_SNDDAT:
         return ci_snddat (pkt);
+
+    case OPC_RETDAT:
+        return ci_retdat (pkt);
 
     case OPC_INVTC:
         return ci_invtc (pkt);
@@ -457,10 +418,11 @@ switch (dg_type) {
 r = ci_send_packet (pkt, msg_size);
 if (r != SCPE_OK)
     return r;
-if (pkt->data[PPD_FLAGS] & PPD_RSP)
-    ci_respond (pkt);                                   /* driver wants it back */
+if (pkt->data[PPD_FLAGS] & PPD_RSP)                     /* response requested? */
+    r = ci_respond (pkt);                               /* driver wants it back */
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 /*               < SNDMSG >                *
@@ -536,10 +498,11 @@ switch (dg_type) {
 r = ci_send_packet (pkt, msg_size);
 if (r != SCPE_OK)
     return r;
-if (pkt->data[PPD_FLAGS] & PPD_RSP)
-    ci_respond (pkt);                                   /* driver wants it back */
+if (pkt->data[PPD_FLAGS] & PPD_RSP)                     /* response requested? */
+    r = ci_respond (pkt);                               /* driver wants it back */
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 /*             < REQID >               *
@@ -563,9 +526,10 @@ r = ci_send_packet (pkt, PPD_HDR);
 if (r != SCPE_OK)
     return r;
 if (pkt->data[PPD_FLAGS] & PPD_RSP)                     /* response requested? */
-    ci_respond (pkt);                                   /* driver wants it back */
+    r = ci_respond (pkt);                               /* driver wants it back */
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 /*               < REQDAT >                           *
@@ -596,9 +560,10 @@ r = ci_send_packet (pkt, 0x2C); // TODO: need #define for this
 if (r != SCPE_OK)
     return r;
 if (pkt->data[PPD_FLAGS] & PPD_RSP)                     /* response requested? */
-    ci_respond (pkt);                                   /* driver wants it back */
+    r = ci_respond (pkt);                               /* driver wants it back */
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 t_stat ci_retid (CI_PKT *pkt)
@@ -614,9 +579,10 @@ r = ci_send_packet (pkt, pkt->length);
 if (r != SCPE_OK)
     return r;
 if (pkt->data[PPD_FLAGS] & PPD_RSP)                     /* response requested? */
-    ci_respond (pkt);                                   /* driver wants it back */
+    r = ci_respond (pkt);                               /* driver wants it back */
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 /*             < SNDLB >               *
@@ -636,6 +602,7 @@ else
  *                                     */
 t_stat ci_sndlb (CI_PKT *pkt)
 {
+t_stat r;
 UNIT *uptr = &ci_dev.units[0];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_LCMD, &ci_dev, "==> SNDLB, path: %s\n", ci_path_names[path]);
@@ -645,13 +612,14 @@ if (uptr->flags & UNIT_ATT) {                           /* CI cables connected? 
     ci_vcd[ci_node].vcd_val |= (VCD_PAG | VCD_PBG);     /* path A and B good */
     pkt->data[PPD_STATUS] = 0;                          /* status OK */
     pkt->data[PPD_OPC] = OPC_LBREC;                     /* loopback received */
-    ci_receive (pkt);
+    r = ci_receive (pkt);
     sim_debug (DBG_LCMD, &ci_dev, "<== LBREC, path: %s\n", ci_path_names[path]);
     }
 else {                                                  /* no, packet lost */
     ci_vcd[ci_node].vcd_val &= ~(VCD_PAG | VCD_PBG);    /* path A and B bad */
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
     }
+return r;
 }
 
 /*
@@ -689,31 +657,54 @@ else {                                                  /* no, packet lost */
  */
 t_stat ci_snddat (CI_PKT *pkt)
 {
+t_stat r;
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "==> SNDDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
 
-ci_send_data (pkt);
+//ci_send_data (pkt);
+ci_send_packet (pkt, pkt->length);
 
 if (pkt->data[PPD_FLAGS] & PPD_RSP) {                   /* response requested? */
     sim_debug (DBG_WRN, &ci_dev, "  SNDDAT response requested!\n");
     pkt->data[PPD_STATUS] = 0;                          /* status OK */
-    ci_respond (pkt);                                   /* driver wants it back */
+    r = ci_respond (pkt);                               /* driver wants it back */
     }
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
+}
+
+t_stat ci_retdat (CI_PKT *pkt)
+{
+t_stat r;
+uint32 port = pkt->data[PPD_PORT];
+uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+sim_debug (DBG_BLKTF, &ci_dev, "==> RETDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
+
+ci_send_packet (pkt, pkt->length);
+
+if (pkt->data[PPD_FLAGS] & PPD_RSP) {                   /* response requested? */
+    pkt->data[PPD_STATUS] = 0;                          /* status OK */
+    r = ci_respond (pkt);                               /* driver wants it back */
+    }
+else
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 t_stat ci_invtc (CI_PKT *pkt)
 {
+t_stat r;
 sim_debug (DBG_LCMD, &ci_dev, "==> INVTC\n");
 if (pkt->data[PPD_FLAGS] & PPD_RSP) {                   /* response requested? */
     pkt->data[PPD_STATUS] = 0;                          /* status OK */
-    ci_respond (pkt);
+    r = ci_respond (pkt);
     sim_debug (DBG_LCMD, &ci_dev, "<== INVTC OK\n");
     }
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 /*             < SETCKT >                *
@@ -760,11 +751,12 @@ else if (!VCD_OPEN (vcd_nval) && VCD_OPEN (vcd_val)) {  /* Closing VC */
 CI_PUT32 (pkt->data, PPD_VCPVAL, vcd_val);
 pkt->data[PPD_STATUS] = 0;                              /* status OK */
 ci_vcd[port].vcd_val = vcd_nval;                        /* set new VCD value */
-ci_respond (pkt);
+return ci_respond (pkt);
 }
 
 t_stat ci_rdcnt (CI_PKT *pkt)
 {
+t_stat r;
 sim_debug (DBG_LCMD, &ci_dev, "==> RDCNT\n");
 CI_PUT32 (pkt->data, 0x10, 0);                          /* ACKs on path 0 */
 CI_PUT32 (pkt->data, 0x14, 0);                          /* NAKs on path 0 */
@@ -776,11 +768,12 @@ CI_PUT32 (pkt->data, 0x28, 0);                          /* DGS discarded */
 
 if (pkt->data[PPD_FLAGS] & PPD_RSP) {                   /* response requested? */
     pkt->data[PPD_STATUS] = 0;                          /* status OK */
-    ci_respond (pkt);
+    r = ci_respond (pkt);
     sim_debug (DBG_LCMD, &ci_dev, "<== CNTRD\n");
     }
 else
-    ci_dispose (pkt);                                   /* dispose of packet */
+    r = ci_dispose (pkt);                               /* dispose of packet */
+return r;
 }
 
 /*               < DGREC >                 *
@@ -841,7 +834,7 @@ switch (dg_type) {
         sim_debug (DBG_PPDDG, &ci_dev, "<== DGREC - %X, dest: %d, path: %s\n", dg_type, port, ci_path_names[path]);
         break;
         }
-ci_receive (pkt);                                       /* pass it to system */
+return ci_receive (pkt);                                /* pass it to system */
 }
 
 /*               < MSGREC >                *
@@ -907,7 +900,7 @@ switch (dg_type) {
         }
 
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-ci_receive (pkt);                                       /* pass it to system */
+return ci_receive (pkt);                                /* pass it to system */
 }
 
 /*             < REQREC >              *
@@ -925,38 +918,8 @@ t_stat ci_reqrec (CI_PKT *pkt)
 t_stat r;
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-
 sim_debug (DBG_REQID, &ci_dev, "<== REQREC, src: %d, path: %s\n", port, ci_path_names[path]);
-ci_receive (pkt);
-return SCPE_OK;
-
-pkt->data[PPD_PORT] = port;                             /* add remote port number */
-pkt->data[PPD_STATUS] = 0;                              /* status: OK */
-pkt->data[PPD_OPC] = OPC_RETID;                         /* set opcode */
-pkt->data[PPD_FLAGS] &= ~PPD_RSP;                       /* clear response flag */
-pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);             /* add send path */
-if (VC_OPEN (port)) {                                   /* don't send ID once VC is open? */
-    CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
-    }
-else {
-    CI_PUT32 (pkt->data, 0x10, 0);                      /* transaction ID low (MBZ to trigger START) */
-    }
-CI_PUT32 (pkt->data, 0x14, 0);                          /* transaction ID high (MBZ to trigger START) */
-#if 0                                                   /* SHAC */
-CI_PUT32 (pkt->data, 0x18, 0x80000022);                 /* remote port type */
-CI_PUT32 (pkt->data, 0x1C, 0x03060D22);                 /* code revision */
-CI_PUT32 (pkt->data, 0x20, 0xFFFF0D00);                 /* function mask */
-#else                                                   /* CI780, CI750 */
-CI_PUT32 (pkt->data, 0x18, 0x80000002);                 /* remote port type */
-CI_PUT32 (pkt->data, 0x1C, 0x00700040);                 /* code revision */
-CI_PUT32 (pkt->data, 0x20, 0xFFFF0F00);                 /* function mask */
-#endif
-pkt->data[0x24] = 0x0;                                  /* resetting port */
-// TODO: should also respond when disabled?
-pkt->data[0x25] = 0x4;                                  /* port state (maint = 0, state = enabled) */
-
-r = ci_send_packet (pkt, 0x26); // TODO: need #define for this
-sim_debug (DBG_REQID, &ci_dev, "==> RETID, dest: %d, path: %s\n", port, ci_path_names[path]);
+return ci_receive (pkt);
 }
 
 /*               < REQDATREC >                        *
@@ -982,7 +945,7 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "<== REQDATREC, src: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-return ci_send_data (pkt);
+return ci_receive (pkt);
 }
 
 /*               < IDREC >                 *
@@ -1006,28 +969,25 @@ t_stat ci_idrec (CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_REQID, &ci_dev, "<== IDREC, src: %d, path: %s\n", port, ci_path_names[path]);
-ci_receive (pkt);
+return ci_receive (pkt);
 }
 
 t_stat ci_datrec (CI_PKT *pkt)
 {
-t_stat r;
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-r = ci_receive_data (pkt);
-if (r != SCPE_OK)
-    return r;
+sim_debug (DBG_BLKTF, &ci_dev, "<== DATREC, src: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return ci_receive (pkt);                                /* Pass it to system */
 }
 
 t_stat ci_snddatrec (CI_PKT *pkt)
 {
-t_stat r;
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+sim_debug (DBG_BLKTF, &ci_dev, "<== SNDDATREC, src: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-return ci_receive_data (pkt);
+return ci_receive (pkt);
 }
 
 t_stat ci_cnfrec (CI_PKT *pkt)
@@ -1036,7 +996,7 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "<== CNFREC, src: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-ci_receive (pkt);                                       /* Pass it to system */
+return ci_receive (pkt);                                /* Pass it to system */
 }
 
 t_stat ci_open_vc (uint8 port)
@@ -1146,7 +1106,7 @@ pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);             /* set send path */
 pkt->data[PPD_FLAGS] &= ~PPD_RSP;                       /* clear response bit */
 pkt->addr = 0;
 
-return ci_ppd (pkt);
+return ci_route_ppd (pkt);
 }
 
 t_stat ciq_init (CI_QUE* que, int32 max)

@@ -115,10 +115,23 @@
 #define CIPPD_OPC       0x10
 #define CIPPD_SEQ_CNTRL 0x11
 
+/* CIQBA specific opcodes */
+
+#define OPC_QUERY       0x00
+#define OPC_INIT        0x01
+#define OPC_PROMISC_EN  0x02
+#define OPC_PROMISC_DIS 0x03
+#define OPC_RESET       0x04
+#define OPC_MAP         0x05
+#define OPC_UNMAP       0x06
+#define OPC_QUERY_RSP   0x80
+#define OPC_PROMISC_PKT 0x82
+
 #define IOBA_CI              (IOPAGEBASE + 0xE00)
 #define IOLN_CI              0x80
 
-#define PQ_BASE              0x80E1D880
+/* #define PQ_BASE              0x80E1D880 */
+#define PQ_BASE              0x80E1F400
 
 typedef struct {
     char *symbol;
@@ -464,6 +477,7 @@ switch (rg) {
         }
 rg = (PA >> 1) &  0x3F;
 sim_debug (DBG_REG, &ci_dev, "ci_rd: %08X = %04X at %08X %s (%s)\n", PA, *data, fault_PC, ci_rgd[rg], ci_sym(fault_PC));
+return SCPE_OK;
 }
 
 t_stat ci_wr (int32 data, int32 PA, int32 access)
@@ -751,7 +765,7 @@ if ((opc != OPC_SNDDG) && (opc != OPC_SNDMSG)) {
         pkt->data[i] = pkt->data[i-2];
     }
 
-swflags = 0;
+swflags = swflags & 0x86;
 if (flags & 0x8)   // PPD_M_LP
     swflags = swflags | 0x1;
 swflags |= ((flags << 3) & 0x30); // Add received path
@@ -825,47 +839,35 @@ t_stat ci_receive (CI_PKT *pkt)
 return ci_receive_int (pkt, FALSE);
 }
 
-/*
-PPD_K_HOST_QUERY = ^X00000000
-PPD_K_HOST_INIT = ^X00000001
-PPD_K_PROMISC_ENABLE = ^X00000002
-PPD_K_PROMISC_DISABLE = ^X00000003
-PPD_K_RESET = ^X00000004
-PPD_K_MAP = ^X00000005
-PPD_K_UNMAP = ^X00000006
-PPD_K_HOST_QUERY_RSP = ^X00000080
-PPD_K_PROMISC_PACKET = ^X00000082
-*/
-
 t_stat ciqba_msg (CI_PKT *pkt)
 {
 uint8 port;
 t_stat r;
 
 switch (pkt->data[PPD_OPC]) {
-    case 0:
+    case OPC_QUERY:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Host Query\n");
         ci_dispose_int (pkt, TRUE);
-        pkt->data[PPD_OPC] = 0x80;
+        pkt->data[PPD_OPC] = OPC_QUERY_RSP;
         ci_receive_int (pkt, TRUE);                     /* FIXME: check for space in ring */
         break;
 
-    case 1:
+    case OPC_INIT:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Host Init\n");
         ci_dispose_int (pkt, TRUE);
         break;
 
-    case 2:
+    case OPC_PROMISC_EN:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Promisc Enable\n");
         ci_dispose_int (pkt, TRUE);
         break;
 
-    case 3:
+    case OPC_PROMISC_DIS:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Promisc Disable\n");
         ci_dispose_int (pkt, TRUE);
         break;
 
-    case 4:
+    case OPC_RESET:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Reset\n");
         port = pkt->data[PPD_PORT];
         if (!ci_vc_open[port]) {
@@ -885,12 +887,12 @@ switch (pkt->data[PPD_OPC]) {
         ci_dispose_int (pkt, TRUE);
         break;
 
-    case 5:
+    case OPC_MAP:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Map\n");
         ci_dispose_int (pkt, TRUE);
         break;
 
-    case 6:
+    case OPC_UNMAP:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Unmap\n");
         ci_dispose_int (pkt, TRUE);
         break;
@@ -919,7 +921,7 @@ while (ci_can_enq (&ci_dsp)) {
     ci_fmt_send (&pkt);
     sim_debug (DBG_REG, &ci_dev, "Processing packet: type = %d\n", pkt.type);
     if (pkt.type == 1)
-        r = ci_ppd (&pkt);
+        r = ci_route_ppd (&pkt);
     else
         r = ciqba_msg (&pkt);
     if (r != SCPE_OK) {

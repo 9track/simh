@@ -912,6 +912,8 @@ extern void rom_wr_B (int32 pa, int32 val);
 #include "vax610_defs.h"
 #elif defined (VAX_620) || defined (VAX_630)
 #include "vax630_defs.h"
+#elif defined (VAX_820)
+#include "vax820_defs.h"
 #elif defined (VAX_860)
 #include "vax860_defs.h"
 #else /* VAX 3900 */

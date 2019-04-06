@@ -263,6 +263,7 @@ int32 cpu_astop = 0;
 int32 mchk_va, mchk_ref;                                /* mem ref param */
 int32 ibufl, ibufh;                                     /* prefetch buf */
 int32 ibcnt, ppc;                                       /* prefetch ctl */
+int32 cc_extra = 0;
 uint32 cpu_idle_mask = VAX_IDLE_VMS;                    /* idle mask */
 uint32 cpu_idle_type = 1;                               /* default VMS */
 int32 extra_bytes;                                      /* bytes referenced by current string instruction */
@@ -3112,6 +3113,9 @@ for ( ;; ) {
         RSVD_INST_FAULT;
         break;
         }                                               /* end case op */
+
+    cc = cc | cc_extra;                                 /* add any extra flags */
+    cc_extra = 0;
     }                                                   /* end for */
 }                                                       /* end sim_instr */
 

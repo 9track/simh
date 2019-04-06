@@ -1381,6 +1381,21 @@ VAX780 = ${VAXD}/vax_cpu.c ${VAXD}/vax_cpu1.c ${VAXD}/vax_fpa.c \
 VAX780_OPT = -DVM_VAX -DVAX_780 -DUSE_INT64 -DUSE_ADDR64 -I VAX -I ${PDP11D} ${NETWORK_OPT}
 
 
+VAX820 = ${VAXD}/vax_cpu.c ${VAXD}/vax_cpu1.c ${VAXD}/vax_fpa.c \
+	${VAXD}/vax_cis.c ${VAXD}/vax_octa.c  ${VAXD}/vax_cmode.c \
+	${VAXD}/vax_mmu.c ${VAXD}/vax_sys.c  ${VAXD}/vax_syscm.c \
+	${VAXD}/vax_watch.c ${VAXD}/vax820_stddev.c ${VAXD}/vax820_bi.c \
+	${VAXD}/vax820_mem.c ${VAXD}/vax820_uba.c ${VAXD}/vax820_ka.c \
+	${VAXD}/vax820_syslist.c \
+	${PDP11D}/pdp11_rl.c ${PDP11D}/pdp11_rq.c ${PDP11D}/pdp11_ts.c \
+	${PDP11D}/pdp11_dz.c ${PDP11D}/pdp11_lp.c ${PDP11D}/pdp11_tq.c \
+	${PDP11D}/pdp11_xu.c ${PDP11D}/pdp11_ry.c ${PDP11D}/pdp11_cr.c \
+	${PDP11D}/pdp11_hk.c ${PDP11D}/pdp11_vh.c ${PDP11D}/pdp11_dmc.c \
+	${PDP11D}/pdp11_td.c ${PDP11D}/pdp11_tc.c ${PDP11D}/pdp11_rk.c \
+	${PDP11D}/pdp11_io_lib.c ${PDP11D}/pdp11_ch.c
+VAX820_OPT = -DVM_VAX -DVAX_820 -DUSE_INT64 -DUSE_ADDR64 -I VAX -I ${PDP11D} ${NETWORK_OPT}
+
+
 VAX8600 = ${VAXD}/vax_cpu.c ${VAXD}/vax_cpu1.c ${VAXD}/vax_fpa.c \
 	${VAXD}/vax_cis.c ${VAXD}/vax_octa.c  ${VAXD}/vax_cmode.c \
 	${VAXD}/vax_mmu.c ${VAXD}/vax_sys.c  ${VAXD}/vax_syscm.c \
@@ -2040,6 +2055,12 @@ ${BIN}vax780${EXE} : ${VAX780} ${SIM} ${BUILD_ROMS}
 ifneq (,$(call find_test,$(VAXD),vax-diag))
 	$@ $(call find_test,$(VAXD),vax-diag) $(TEST_ARG)
 endif
+
+vax820 : ${BIN}vax820${EXE}
+
+${BIN}vax820${EXE} : ${VAX820} ${SIM} ${BUILD_ROMS}
+	${MKDIRBIN}
+	${CC} ${VAX820} ${SIM} ${VAX820_OPT} $(CC_OUTSPEC) ${LDFLAGS}
 
 vax8600 : ${BIN}BuildROMs${EXE} ${BIN}vax8600${EXE}
 

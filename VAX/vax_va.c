@@ -28,7 +28,7 @@
    Related documents:
 
         EK-104AA-TM - VCB02 Video Subsystem Technical Manual
-		MP02083     - VCB02 Field Maintenance Print Set
+        MP02083     - VCB02 Field Maintenance Print Set
 */
 
 #include "vax_defs.h"
@@ -303,8 +303,8 @@ t_stat va_rd (int32 *data, int32 PA, int32 access)
 int32 rg = (PA >> 1) & 0x1F;
 if (rg == 0) {
     *data = CSR_MBO | CSR_FPS;
-	if (RAM_SIZE >= 0x4000)
-		*data = *data | CSR_RAM;                              /* 8KW system */
+    if (RAM_SIZE >= 0x4000)
+       *data = *data | CSR_RAM;                              /* 8KW system */
     if (VA_PLANES < 8)
         *data = *data | CSR_OPT2;                             /* option 2 not present */
     }
@@ -590,7 +590,7 @@ if (rg >= VA_DGA_OF) {                                  /* DMA gate array */
     return data;
     }
 if (rg >= VA_ADP_OF) {                                  /* address processor */
-	rg = rg & 0xFF;
+    rg = rg & 0xFF;
     data = va_adp_rd (rg);
     SET_IRQL;
     return data;
@@ -662,7 +662,7 @@ if (rg >= VA_DGA_OF) {                                  /* DMA gate array */
     return;
     }
 if (rg >= VA_ADP_OF) {                                  /* address processor */
-	rg = rg & 0xFF;
+    rg = rg & 0xFF;
     va_adp_wr (rg, val);
     SET_IRQL;
     return;

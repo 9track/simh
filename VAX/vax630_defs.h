@@ -182,7 +182,7 @@ extern t_stat cpu_show_memory (FILE* st, UNIT* uptr, int32 val, CONST void* desc
 
 /* QDSS memory space */
 
-#define QDMAWIDTH       18                              /* QDSS mem addr width */
+#define QDMAWIDTH       16                              /* QDSS mem addr width */
 #define QDMSIZE         (1u << QDMAWIDTH)               /* QDSS mem length */
 #define QDMAMASK        (QDMSIZE - 1)                   /* QDSS mem addr mask */
 #define QDMBASE         0x303F0000                      /* QDSS mem base */

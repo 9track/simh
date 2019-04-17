@@ -132,7 +132,7 @@ CTAB vax460_cmd[] = {
 extern int32 tmr_int;
 extern UNIT clk_unit;
 extern int32 tmr_poll;
-extern DEVICE lk_dev, vs_dev, xs_dev;
+extern DEVICE lk_dev, vs_dev;
 extern uint32 *rom;
 
 uint32 *isdn = NULL;                                    /* ISDN/audio registers */

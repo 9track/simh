@@ -93,9 +93,7 @@ CTAB vax43a_cmd[] = {
 extern int32 tmr_int;
 extern UNIT clk_unit;
 extern int32 tmr_poll;
-extern int32 vc_sel, vc_org;
-extern DEVICE dz_dev;
-extern DEVICE rzb_dev;
+extern uint32 vc_sel, vc_org;
 extern DEVICE vc_dev, ve_dev, lk_dev, vs_dev;
 extern DEVICE xs_dev;
 extern uint32 *rom;

@@ -80,7 +80,7 @@ CTAB vax410_cmd[] = {
 extern int32 tmr_int;
 extern UNIT clk_unit;
 extern int32 tmr_poll;
-extern int32 vc_sel, vc_org;
+extern uint32 vc_sel, vc_org;
 extern DEVICE va_dev, vc_dev, lk_dev, vs_dev;
 extern DEVICE xs_dev;
 extern uint32 *rom;

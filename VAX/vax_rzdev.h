@@ -222,7 +222,7 @@
 #define RZ_DEV(d) \
     { d##_TYPE, d##_PQUAL, d##_SCSI, d##_RM,  d##_BLK, \
       d##_LBN,  d##_MANU,  d##_DESC, d##_REV, #d }
-#define RZ_SIZE(d)      (d##_LBN * d##_BLK)
+#define RZ_SIZE(d)      d##_LBN
 
 static struct scsi_dev_t rzdev_tab[] = {
     RZ_DEV (RZ23),

@@ -668,7 +668,7 @@ old_phase = rz->bus.phase;
 if (rz->dcount == 0)
     dma_len = DMA_SIZE;                                 /* full buffer */
 else
-    dma_len = (DMA_SIZE - rz->dcount) & DCNT_MASK;      /* 2's complement */
+    dma_len = ((rz->dcount ^ DCNT_MASK) + 1) & DCNT_MASK; /* 2's complement */
 if (rz->ddir == 1) {                                    /* DMA in */
     dma_len = scsi_read (&rz->bus, &rz->unit_buf[0], dma_len);
     ddb_WriteB (rz->daddr, dma_len, &rz->unit_buf[0]);
@@ -679,7 +679,7 @@ else {                                                  /* DMA out */
     }
 rz->unit_buf_len = 0;
 rz->dcount = (rz->dcount + dma_len) & DCNT_MASK;        /* increment toward zero */
-dma_len = (DMA_SIZE - rz->dcount) & DCNT_MASK;          /* 2's complement */
+dma_len = ((rz->dcount ^ DCNT_MASK) + 1) & DCNT_MASK;   /* 2's complement */
 if (rz->ddir == 1) {                                    /* DMA in */
     if (old_phase == PH_MSG_IN)                         /* message in just processed? */
         scsi_release (&rz->bus);                        /* accept message */

@@ -3,7 +3,7 @@
 # Modified By:  Mark Pizzolato / mark@infocomm.com
 #               Norman Lastovica / norman.lastovica@oracle.com
 #               Camiel Vanderhoeven / camiel@camicom.com
-#               Matt Burke / scope.matthew@btinternet.com
+#               Matt Burke / matt@9track.net
 #
 # This MMS/MMK build script is used to compile the various simulators in
 # the SIMH package for OpenVMS using DEC C v6.0-001(AXP), v6.5-001(AXP),
@@ -34,6 +34,7 @@
 #            IBM1130         Just Build The IBM 1130.
 #            ID16            Just Build The Interdata 16-bit CPU.
 #            ID32            Just Build The Interdata 32-bit CPU.
+#            IS1000          Just Build The DEC InfoServer 1000.
 #            NOVA            Just Build The Data General Nova.
 #            PDP1            Just Build The DEC PDP-1.
 #            PDP4            Just Build The DEC PDP-4.
@@ -53,6 +54,17 @@
 #            MicroVAX1       Just Build The DEC MicroVAX1 (MicroVAX I).
 #            rtVAX1000       Just Build The DEC rtVAX1000 (rtVAX 1000).
 #            MicroVAX2       Just Build The DEC MicroVAX2 (MicroVAX II).
+#            VAX410          Just Build The DEC VAX410 (MicroVAX 2000).
+#            VAX411          Just Build The DEC VAX411 (InfoServer 100).
+#            VAX412          Just Build The DEC VAX412 (InfoServer 150 VXT).
+#            VAX41A          Just Build The DEC VAX41A (MicroVAX 3100 M10/M20).
+#            VAX41D          Just Build The DEC VAX41D (MicroVAX 3100 M10e/M20e).
+#            VAX42A          Just Build The DEC VAX42A (VAXstation 3100 M30).
+#            VAX42B          Just Build The DEC VAX42B (VAXstation 3100 M38).
+#            VAX43           Just Build The DEC VAX43 (VAXstation 3100 M76).
+#            VAX46           Just Build The DEC VAX46 (VAXstation 4000 M60).
+#            VAX47           Just Build The DEC VAX47 (MicroVAX 3100 M80).
+#            VAX48           Just Build The DEC VAX48 (VAXstation 4000 VLC).
 #            VAX730          Just Build The DEC VAX730.
 #            VAX750          Just Build The DEC VAX750.
 #            VAX780          Just Build The DEC VAX780.
@@ -207,7 +219,8 @@ SIMH_SOURCE = $(SIMH_DIR)SIM_CONSOLE.C,$(SIMH_DIR)SIM_SOCK.C,\
               $(SIMH_DIR)SIM_TMXR.C,$(SIMH_DIR)SIM_ETHER.C,\
               $(SIMH_DIR)SIM_TAPE.C,$(SIMH_DIR)SIM_FIO.C,\
               $(SIMH_DIR)SIM_TIMER.C,$(SIMH_DIR)SIM_DISK.C,\
-              $(SIMH_DIR)SIM_SERIAL.C,$(SIMH_DIR)SIM_VIDEO.C
+              $(SIMH_DIR)SIM_SERIAL.C,$(SIMH_DIR)SIM_VIDEO.C,\
+              $(SIMH_DIR)SIM_SCSI.C
 SIMH_MAIN = SCP.C
 .IFDEF ALPHA_OR_IA64
 SIMH_LIB64 = $(LIB_DIR)SIMH64-$(ARCH).OLB
@@ -735,6 +748,326 @@ VAX_OPTIONS = /INCL=($(SIMH_DIR),$(VAX_DIR),$(PDP11_DIR)$(PCAP_INC))\
 VAX_SIMH_LIB = $(SIMH_LIB)
 .ENDIF
 
+# Digital Equipment VAX410 (MicroVAX 2000) Simulator Definitions.
+#
+VAX410_DIR = SYS$DISK:[.VAX]
+VAX410_LIB1 = $(LIB_DIR)VAX410L1-$(ARCH).OLB
+VAX410_SOURCE1 = $(VAX410_DIR)VAX_CPU.C,$(VAX410_DIR)VAX_CPU1.C,\
+                 $(VAX410_DIR)VAX_FPA.C,$(VAX410_DIR)VAX_CIS.C,\
+                 $(VAX410_DIR)VAX_OCTA.C,$(VAX410_DIR)VAX_CMODE.C,\
+                 $(VAX410_DIR)VAX_MMU.C,$(VAX410_DIR)VAX_SYS.C,\
+                 $(VAX410_DIR)VAX_SYSCM.C
+VAX410_LIB2 = $(LIB_DIR)VAX410L2-$(ARCH).OLB
+VAX410_SOURCE2 = $(VAX410_DIR)VAX_NAR.C,$(VAX410_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX410_DIR)VAX410_SYSDEV.C,$(VAX410_DIR)VAX410_SYSLIST.C,\
+                 $(VAX410_DIR)VAX4XX_DZ.C,$(VAX410_DIR)VAX4XX_RD.C,\
+                 $(VAX410_DIR)VAX4XX_RZ80.C,$(VAX410_DIR)VAX_XS.C,\
+                 $(VAX410_DIR)VAX4XX_VA.C,$(VAX410_DIR)VAX4XX_VC.C,\
+                 $(VAX410_DIR)VAX_LK.C,$(VAX410_DIR)VAX_VS.C,\
+                 $(VAX410_DIR)VAX_GPX.C,$(VAX410_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX410_OPTIONS = /INCL=($(SIMH_DIR),$(VAX410_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_410=1")
+VAX410_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX410_OPTIONS = /INCL=($(SIMH_DIR),$(VAX410_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_410=1")
+VAX410_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX411 (InfoServer 100) Simulator Definitions.
+#
+VAX411_DIR = SYS$DISK:[.VAX]
+VAX411_LIB1 = $(LIB_DIR)VAX411L1-$(ARCH).OLB
+VAX411_SOURCE1 = $(VAX411_DIR)VAX_CPU.C,$(VAX411_DIR)VAX_CPU1.C,\
+                 $(VAX411_DIR)VAX_FPA.C,$(VAX411_DIR)VAX_CIS.C,\
+                 $(VAX411_DIR)VAX_OCTA.C,$(VAX411_DIR)VAX_CMODE.C,\
+                 $(VAX411_DIR)VAX_MMU.C,$(VAX411_DIR)VAX_SYS.C,\
+                 $(VAX411_DIR)VAX_SYSCM.C
+VAX411_LIB2 = $(LIB_DIR)VAX411L2-$(ARCH).OLB
+VAX411_SOURCE2 = $(VAX411_DIR)VAX_NAR.C,$(VAX411_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX411_DIR)VAX420_SYSDEV.C,$(VAX411_DIR)VAX420_SYSLIST.C,\
+                 $(VAX411_DIR)VAX4XX_DZ.C,$(VAX411_DIR)VAX4XX_RD.C,\
+                 $(VAX411_DIR)VAX4XX_RZ80.C,$(VAX411_DIR)VAX_XS.C,\
+                 $(VAX411_DIR)VAX4XX_VA.C,$(VAX411_DIR)VAX4XX_VC.C,\
+                 $(VAX411_DIR)VAX4XX_VE.C,$(VAX411_DIR)VAX_LK.C,\
+                 $(VAX411_DIR)VAX_VS.C,$(VAX411_DIR)VAX_GPX.C,\
+                 $(VAX411_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX411_OPTIONS = /INCL=($(SIMH_DIR),$(VAX411_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_420=1","VAX_411=1")
+VAX411_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX411_OPTIONS = /INCL=($(SIMH_DIR),$(VAX411_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_420=1","VAX_411=1")
+VAX411_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX412 (InfoServer 150 VXT) Simulator Definitions.
+#
+VAX412_DIR = SYS$DISK:[.VAX]
+VAX412_LIB1 = $(LIB_DIR)VAX412L1-$(ARCH).OLB
+VAX412_SOURCE1 = $(VAX412_DIR)VAX_CPU.C,$(VAX412_DIR)VAX_CPU1.C,\
+                 $(VAX412_DIR)VAX_FPA.C,$(VAX412_DIR)VAX_CIS.C,\
+                 $(VAX412_DIR)VAX_OCTA.C,$(VAX412_DIR)VAX_CMODE.C,\
+                 $(VAX412_DIR)VAX_MMU.C,$(VAX412_DIR)VAX_SYS.C,\
+                 $(VAX412_DIR)VAX_SYSCM.C
+VAX412_LIB2 = $(LIB_DIR)VAX412L2-$(ARCH).OLB
+VAX412_SOURCE2 = $(VAX412_DIR)VAX_NAR.C,$(VAX412_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX412_DIR)VAX420_SYSDEV.C,$(VAX412_DIR)VAX420_SYSLIST.C,\
+                 $(VAX412_DIR)VAX4XX_DZ.C,$(VAX412_DIR)VAX4XX_RD.C,\
+                 $(VAX412_DIR)VAX4XX_RZ80.C,$(VAX412_DIR)VAX_XS.C,\
+                 $(VAX412_DIR)VAX4XX_VA.C,$(VAX412_DIR)VAX4XX_VC.C,\
+                 $(VAX412_DIR)VAX4XX_VE.C,$(VAX412_DIR)VAX_LK.C,\
+                 $(VAX412_DIR)VAX_VS.C,$(VAX412_DIR)VAX_GPX.C,\
+                 $(VAX412_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX412_OPTIONS = /INCL=($(SIMH_DIR),$(VAX412_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_420=1","VAX_412=1")
+VAX412_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX412_OPTIONS = /INCL=($(SIMH_DIR),$(VAX412_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_420=1","VAX_412=1")
+VAX412_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX41A (MicroVAX 3100 M10/M20) Simulator Definitions.
+#
+VAX41A_DIR = SYS$DISK:[.VAX]
+VAX41A_LIB1 = $(LIB_DIR)VAX41AL1-$(ARCH).OLB
+VAX41A_SOURCE1 = $(VAX41A_DIR)VAX_CPU.C,$(VAX41A_DIR)VAX_CPU1.C,\
+                 $(VAX41A_DIR)VAX_FPA.C,$(VAX41A_DIR)VAX_CIS.C,\
+                 $(VAX41A_DIR)VAX_OCTA.C,$(VAX41A_DIR)VAX_CMODE.C,\
+                 $(VAX41A_DIR)VAX_MMU.C,$(VAX41A_DIR)VAX_SYS.C,\
+                 $(VAX41A_DIR)VAX_SYSCM.C
+VAX41A_LIB2 = $(LIB_DIR)VAX41AL2-$(ARCH).OLB
+VAX41A_SOURCE2 = $(VAX41A_DIR)VAX_NAR.C,$(VAX41A_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX41A_DIR)VAX420_SYSDEV.C,$(VAX41A_DIR)VAX420_SYSLIST.C,\
+                 $(VAX41A_DIR)VAX4XX_DZ.C,$(VAX41A_DIR)VAX4XX_RD.C,\
+                 $(VAX41A_DIR)VAX4XX_RZ80.C,$(VAX41A_DIR)VAX_XS.C,\
+                 $(VAX41A_DIR)VAX4XX_VA.C,$(VAX41A_DIR)VAX4XX_VC.C,\
+                 $(VAX41A_DIR)VAX4XX_VE.C,$(VAX41A_DIR)VAX_LK.C,\
+                 $(VAX41A_DIR)VAX_VS.C,$(VAX41A_DIR)VAX_GPX.C,\
+                 $(VAX41A_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX41A_OPTIONS = /INCL=($(SIMH_DIR),$(VAX41A_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_420=1","VAX_41A=1")
+VAX41A_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX41A_OPTIONS = /INCL=($(SIMH_DIR),$(VAX41A_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_420=1","VAX_41A=1")
+VAX41A_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX41D (MicroVAX 3100 M10e/M20e) Simulator Definitions.
+#
+VAX41D_DIR = SYS$DISK:[.VAX]
+VAX41D_LIB1 = $(LIB_DIR)VAX41DL1-$(ARCH).OLB
+VAX41D_SOURCE1 = $(VAX41D_DIR)VAX_CPU.C,$(VAX41D_DIR)VAX_CPU1.C,\
+                 $(VAX41D_DIR)VAX_FPA.C,$(VAX41D_DIR)VAX_CIS.C,\
+                 $(VAX41D_DIR)VAX_OCTA.C,$(VAX41D_DIR)VAX_CMODE.C,\
+                 $(VAX41D_DIR)VAX_MMU.C,$(VAX41D_DIR)VAX_SYS.C,\
+                 $(VAX41D_DIR)VAX_SYSCM.C
+VAX41D_LIB2 = $(LIB_DIR)VAX41DL2-$(ARCH).OLB
+VAX41D_SOURCE2 = $(VAX41D_DIR)VAX_NAR.C,$(VAX41D_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX41D_DIR)VAX420_SYSDEV.C,$(VAX41D_DIR)VAX420_SYSLIST.C,\
+                 $(VAX41D_DIR)VAX4XX_DZ.C,$(VAX41D_DIR)VAX4XX_RD.C,\
+                 $(VAX41D_DIR)VAX4XX_RZ80.C,$(VAX41D_DIR)VAX_XS.C,\
+                 $(VAX41D_DIR)VAX4XX_VA.C,$(VAX41D_DIR)VAX4XX_VC.C,\
+                 $(VAX41D_DIR)VAX4XX_VE.C,$(VAX41D_DIR)VAX_LK.C,\
+                 $(VAX41D_DIR)VAX_VS.C,$(VAX41D_DIR)VAX_GPX.C,\
+                 $(VAX41D_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX41D_OPTIONS = /INCL=($(SIMH_DIR),$(VAX41D_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_420=1","VAX_41D=1")
+VAX41D_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX41D_OPTIONS = /INCL=($(SIMH_DIR),$(VAX41D_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_420=1","VAX_41D=1")
+VAX41D_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX42A (VAXstation 3100 M30) Simulator Definitions.
+#
+VAX42A_DIR = SYS$DISK:[.VAX]
+VAX42A_LIB1 = $(LIB_DIR)VAX42AL1-$(ARCH).OLB
+VAX42A_SOURCE1 = $(VAX42A_DIR)VAX_CPU.C,$(VAX42A_DIR)VAX_CPU1.C,\
+                 $(VAX42A_DIR)VAX_FPA.C,$(VAX42A_DIR)VAX_CIS.C,\
+                 $(VAX42A_DIR)VAX_OCTA.C,$(VAX42A_DIR)VAX_CMODE.C,\
+                 $(VAX42A_DIR)VAX_MMU.C,$(VAX42A_DIR)VAX_SYS.C,\
+                 $(VAX42A_DIR)VAX_SYSCM.C
+VAX42A_LIB2 = $(LIB_DIR)VAX42AL2-$(ARCH).OLB
+VAX42A_SOURCE2 = $(VAX42A_DIR)VAX_NAR.C,$(VAX42A_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX42A_DIR)VAX420_SYSDEV.C,$(VAX42A_DIR)VAX420_SYSLIST.C,\
+                 $(VAX42A_DIR)VAX4XX_DZ.C,$(VAX42A_DIR)VAX4XX_RD.C,\
+                 $(VAX42A_DIR)VAX4XX_RZ80.C,$(VAX42A_DIR)VAX_XS.C,\
+                 $(VAX42A_DIR)VAX4XX_VA.C,$(VAX42A_DIR)VAX4XX_VC.C,\
+                 $(VAX42A_DIR)VAX4XX_VE.C,$(VAX42A_DIR)VAX_LK.C,\
+                 $(VAX42A_DIR)VAX_VS.C,$(VAX42A_DIR)VAX_GPX.C,\
+                 $(VAX42A_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX42A_OPTIONS = /INCL=($(SIMH_DIR),$(VAX42A_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_420=1","VAX_42A=1")
+VAX42A_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX42A_OPTIONS = /INCL=($(SIMH_DIR),$(VAX42A_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_420=1","VAX_42A=1")
+VAX42A_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX42B (VAXstation 3100 M38) Simulator Definitions.
+#
+VAX42B_DIR = SYS$DISK:[.VAX]
+VAX42B_LIB1 = $(LIB_DIR)VAX42BL1-$(ARCH).OLB
+VAX42B_SOURCE1 = $(VAX42B_DIR)VAX_CPU.C,$(VAX42B_DIR)VAX_CPU1.C,\
+                 $(VAX42B_DIR)VAX_FPA.C,$(VAX42B_DIR)VAX_CIS.C,\
+                 $(VAX42B_DIR)VAX_OCTA.C,$(VAX42B_DIR)VAX_CMODE.C,\
+                 $(VAX42B_DIR)VAX_MMU.C,$(VAX42B_DIR)VAX_SYS.C,\
+                 $(VAX42B_DIR)VAX_SYSCM.C
+VAX42B_LIB2 = $(LIB_DIR)VAX42BL2-$(ARCH).OLB
+VAX42B_SOURCE2 = $(VAX42B_DIR)VAX_NAR.C,$(VAX42B_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX42B_DIR)VAX420_SYSDEV.C,$(VAX42B_DIR)VAX420_SYSLIST.C,\
+                 $(VAX42B_DIR)VAX4XX_DZ.C,$(VAX42B_DIR)VAX4XX_RD.C,\
+                 $(VAX42B_DIR)VAX4XX_RZ80.C,$(VAX42B_DIR)VAX_XS.C,\
+                 $(VAX42B_DIR)VAX4XX_VA.C,$(VAX42B_DIR)VAX4XX_VC.C,\
+                 $(VAX42B_DIR)VAX4XX_VE.C,$(VAX42B_DIR)VAX_LK.C,\
+                 $(VAX42B_DIR)VAX_VS.C,$(VAX42B_DIR)VAX_GPX.C,\
+                 $(VAX42B_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX42B_OPTIONS = /INCL=($(SIMH_DIR),$(VAX42B_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_420=1","VAX_42B=1")
+VAX42B_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX42B_OPTIONS = /INCL=($(SIMH_DIR),$(VAX42B_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_420=1","VAX_42B=1")
+VAX42B_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX43 (VAXstation 3100 M76) Simulator Definitions.
+#
+VAX43_DIR = SYS$DISK:[.VAX]
+VAX43_LIB1 = $(LIB_DIR)VAX43L1-$(ARCH).OLB
+VAX43_SOURCE1 = $(VAX43_DIR)VAX_CPU.C,$(VAX43_DIR)VAX_CPU1.C,\
+                 $(VAX43_DIR)VAX_FPA.C,$(VAX43_DIR)VAX_CIS.C,\
+                 $(VAX43_DIR)VAX_OCTA.C,$(VAX43_DIR)VAX_CMODE.C,\
+                 $(VAX43_DIR)VAX_MMU.C,$(VAX43_DIR)VAX_SYS.C,\
+                 $(VAX43_DIR)VAX_SYSCM.C
+VAX43_LIB2 = $(LIB_DIR)VAX43L2-$(ARCH).OLB
+VAX43_SOURCE2 = $(VAX43_DIR)VAX_NAR.C,$(VAX43_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX43_DIR)VAX43_SYSDEV.C,$(VAX43_DIR)VAX43_SYSLIST.C,\
+                 $(VAX43_DIR)VAX4XX_DZ.C,$(VAX43_DIR)VAX4XX_RZ80.C,\
+                 $(VAX43_DIR)VAX_XS.C,$(VAX43_DIR)VAX4XX_VC.C,\
+                 $(VAX43_DIR)VAX4XX_VE.C,$(VAX43_DIR)VAX_LK.C,\
+                 $(VAX43_DIR)VAX_VS.C,$(VAX43_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX43_OPTIONS = /INCL=($(SIMH_DIR),$(VAX43_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_43=1")
+VAX43_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX43_OPTIONS = /INCL=($(SIMH_DIR),$(VAX43_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_43=1")
+VAX43_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX46 (VAXstation 4000 M60) Simulator Definitions.
+#
+VAX46_DIR = SYS$DISK:[.VAX]
+VAX46_LIB1 = $(LIB_DIR)VAX46L1-$(ARCH).OLB
+VAX46_SOURCE1 = $(VAX46_DIR)VAX_CPU.C,$(VAX46_DIR)VAX_CPU1.C,\
+                 $(VAX46_DIR)VAX_FPA.C,$(VAX46_DIR)VAX_CIS.C,\
+                 $(VAX46_DIR)VAX_OCTA.C,$(VAX46_DIR)VAX_CMODE.C,\
+                 $(VAX46_DIR)VAX_MMU.C,$(VAX46_DIR)VAX_SYS.C,\
+                 $(VAX46_DIR)VAX_SYSCM.C
+VAX46_LIB2 = $(LIB_DIR)VAX46L2-$(ARCH).OLB
+VAX46_SOURCE2 = $(VAX46_DIR)VAX_NAR.C,$(VAX46_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX46_DIR)VAX440_SYSDEV.C,$(VAX46_DIR)VAX440_SYSLIST.C,\
+                 $(VAX46_DIR)VAX4XX_DZ.C,$(VAX46_DIR)VAX4XX_RZ94.C,\
+                 $(VAX46_DIR)VAX_XS.C,$(VAX46_DIR)VAX_LK.C,\
+                 $(VAX46_DIR)VAX_VS.C,$(VAX46_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX46_OPTIONS = /INCL=($(SIMH_DIR),$(VAX46_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_440=1","VAX_46=1")
+VAX46_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX46_OPTIONS = /INCL=($(SIMH_DIR),$(VAX46_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_440=1","VAX_46=1")
+VAX46_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX47 (MicroVAX 3100 M80) Simulator Definitions.
+#
+VAX47_DIR = SYS$DISK:[.VAX]
+VAX47_LIB1 = $(LIB_DIR)VAX47L1-$(ARCH).OLB
+VAX47_SOURCE1 = $(VAX47_DIR)VAX_CPU.C,$(VAX47_DIR)VAX_CPU1.C,\
+                 $(VAX47_DIR)VAX_FPA.C,$(VAX47_DIR)VAX_CIS.C,\
+                 $(VAX47_DIR)VAX_OCTA.C,$(VAX47_DIR)VAX_CMODE.C,\
+                 $(VAX47_DIR)VAX_MMU.C,$(VAX47_DIR)VAX_SYS.C,\
+                 $(VAX47_DIR)VAX_SYSCM.C
+VAX47_LIB2 = $(LIB_DIR)VAX47L2-$(ARCH).OLB
+VAX47_SOURCE2 = $(VAX47_DIR)VAX_NAR.C,$(VAX47_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX47_DIR)VAX440_SYSDEV.C,$(VAX47_DIR)VAX440_SYSLIST.C,\
+                 $(VAX47_DIR)VAX4XX_DZ.C,$(VAX47_DIR)VAX4XX_RZ94.C,\
+                 $(VAX47_DIR)VAX_XS.C,$(VAX47_DIR)VAX_LK.C,\
+                 $(VAX47_DIR)VAX_VS.C,$(VAX47_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX47_OPTIONS = /INCL=($(SIMH_DIR),$(VAX47_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_440=1","VAX_47=1")
+VAX47_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX47_OPTIONS = /INCL=($(SIMH_DIR),$(VAX47_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_440=1","VAX_47=1")
+VAX47_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment VAX48 (VAXstation 4000 VLC) Simulator Definitions.
+#
+VAX48_DIR = SYS$DISK:[.VAX]
+VAX48_LIB1 = $(LIB_DIR)VAX48L1-$(ARCH).OLB
+VAX48_SOURCE1 = $(VAX48_DIR)VAX_CPU.C,$(VAX48_DIR)VAX_CPU1.C,\
+                 $(VAX48_DIR)VAX_FPA.C,$(VAX48_DIR)VAX_CIS.C,\
+                 $(VAX48_DIR)VAX_OCTA.C,$(VAX48_DIR)VAX_CMODE.C,\
+                 $(VAX48_DIR)VAX_MMU.C,$(VAX48_DIR)VAX_SYS.C,\
+                 $(VAX48_DIR)VAX_SYSCM.C
+VAX48_LIB2 = $(LIB_DIR)VAX48L2-$(ARCH).OLB
+VAX48_SOURCE2 = $(VAX48_DIR)VAX_NAR.C,$(VAX48_DIR)VAX4XX_STDDEV.C,\
+                 $(VAX48_DIR)VAX440_SYSDEV.C,$(VAX48_DIR)VAX440_SYSLIST.C,\
+                 $(VAX48_DIR)VAX4XX_DZ.C,$(VAX48_DIR)VAX4XX_RZ94.C,\
+                 $(VAX48_DIR)VAX_XS.C,$(VAX48_DIR)VAX_LK.C,\
+                 $(VAX48_DIR)VAX_VS.C,$(VAX48_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+VAX48_OPTIONS = /INCL=($(SIMH_DIR),$(VAX48_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"VAX_440=1","VAX_48=1")
+VAX48_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+VAX48_OPTIONS = /INCL=($(SIMH_DIR),$(VAX48_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"VAX_440=1","VAX_48=1")
+VAX48_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
+# Digital Equipment IS1000 (InfoServer 1000) Simulator Definitions.
+#
+IS1000_DIR = SYS$DISK:[.VAX]
+IS1000_LIB1 = $(LIB_DIR)IS1000L1-$(ARCH).OLB
+IS1000_SOURCE1 = $(IS1000_DIR)VAX_CPU.C,$(IS1000_DIR)VAX_CPU1.C,\
+                 $(IS1000_DIR)VAX_FPA.C,$(IS1000_DIR)VAX_CIS.C,\
+                 $(IS1000_DIR)VAX_OCTA.C,$(IS1000_DIR)VAX_CMODE.C,\
+                 $(IS1000_DIR)VAX_MMU.C,$(IS1000_DIR)VAX_SYS.C,\
+                 $(IS1000_DIR)VAX_SYSCM.C
+IS1000_LIB2 = $(LIB_DIR)IS1000L2-$(ARCH).OLB
+IS1000_SOURCE2 = $(IS1000_DIR)VAX_NAR.C,$(IS1000_DIR)VAX4NN_STDDEV.C,\
+                 $(IS1000_DIR)IS1000_SYSDEV.C,$(IS1000_DIR)IS1000_SYSLIST.C,\
+                 $(IS1000_DIR)VAX4XX_RZ94.C,$(IS1000_DIR)VAX_XS.C,\
+                 $(IS1000_DIR)VAX_WATCH.C
+.IFDEF ALPHA_OR_IA64
+IS1000_OPTIONS = /INCL=($(SIMH_DIR),$(IS1000_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1","USE_ADDR64=1","USE_INT64=1"$(PCAP_DEFS),"IS_1000=1")
+IS1000_SIMH_LIB = $(SIMH_LIB64)
+.ELSE
+IS1000_OPTIONS = /INCL=($(SIMH_DIR),$(IS1000_DIR),$(PDP11_DIR)$(PCAP_INC))\
+                 /DEF=($(CC_DEFS),"VM_VAX=1"$(PCAP_DEFS),"IS_1000=1")
+IS1000_SIMH_LIB = $(SIMH_LIB)
+.ENDIF
+
 # Digital Equipment VAX610 (MicroVAX I) Simulator Definitions.
 #
 VAX610_DIR = SYS$DISK:[.VAX]
@@ -971,6 +1304,7 @@ I7094_OPTIONS = /INCL=($(SIMH_DIR),$(I7094_DIR))/DEF=($(CC_DEFS))
 ALL : ALTAIR ALTAIRZ80 CDC1700 ECLIPSE GRI LGP H316 HP2100 HP3000 I1401 I1620 \
       IBM1130 ID16 ID32 NOVA PDP1 PDP4 PDP7 PDP8 PDP9 PDP10 PDP11 PDP15 S3 \
       VAX MICROVAX3900 MICROVAX1 RTVAX1000 MICROVAX2 VAX730 VAX750 VAX780 VAX8600 \
+      VAX410 VAX411 VAX412 VAX41A VAX41D VAX42A VAX42B VAX43 VAX46 VAX47 VAX48 IS1000 \
       SDS I7094 SWTP6800MP-A SWTP6800MP-A2 SSEM BESM6 B5500
         $! No further actions necessary
 .ELSE
@@ -980,6 +1314,7 @@ ALL : ALTAIR ALTAIRZ80 CDC1700 ECLIPSE GRI LGP H316 HP2100 HP3000 I1401 I1620 \
 ALL : ALTAIR GRI H316 HP2100 I1401 I1620 IBM1130 ID16 ID32 \
       NOVA PDP1 PDP4 PDP7 PDP8 PDP9 PDP11 PDP15 S3 \
       VAX MICROVAX3900 MICROVAX1 RTVAX1000 MICROVAX2 VAX730 VAX750 VAX780 VAX8600 \
+      VAX410 VAX411 VAX412 VAX41A VAX41D VAX42A VAX42B VAX43 VAX46 VAX47 VAX48 IS1000 \
       SDS SWTP6800MP-A SWTP6800MP-A2 SSEM
         $! No further actions necessary
 .ENDIF
@@ -1530,6 +1865,270 @@ $(VAX_LIB2) : $(VAX_SOURCE2)
         $! Building The $(VAX_LIB2) Library.
         $!
         $ $(CC)$(VAX_OPTIONS)/OBJ=$(VAX_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX410_LIB1) : $(VAX410_SOURCE1)
+        $!
+        $! Building The $(VAX410_LIB1) Library.
+        $!
+        $ $(CC)$(VAX410_OPTIONS)/OBJ=$(VAX410_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX410_LIB2) : $(VAX410_SOURCE2)
+        $!
+        $! Building The $(VAX410_LIB2) Library.
+        $!
+        $ $(CC)$(VAX410_OPTIONS)/OBJ=$(VAX410_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX411_LIB1) : $(VAX411_SOURCE1)
+        $!
+        $! Building The $(VAX411_LIB1) Library.
+        $!
+        $ $(CC)$(VAX411_OPTIONS)/OBJ=$(VAX411_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX411_LIB2) : $(VAX411_SOURCE2)
+        $!
+        $! Building The $(VAX411_LIB2) Library.
+        $!
+        $ $(CC)$(VAX411_OPTIONS)/OBJ=$(VAX411_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX412_LIB1) : $(VAX412_SOURCE1)
+        $!
+        $! Building The $(VAX412_LIB1) Library.
+        $!
+        $ $(CC)$(VAX412_OPTIONS)/OBJ=$(VAX412_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX412_LIB2) : $(VAX412_SOURCE2)
+        $!
+        $! Building The $(VAX412_LIB2) Library.
+        $!
+        $ $(CC)$(VAX412_OPTIONS)/OBJ=$(VAX412_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX41A_LIB1) : $(VAX41A_SOURCE1)
+        $!
+        $! Building The $(VAX41A_LIB1) Library.
+        $!
+        $ $(CC)$(VAX41A_OPTIONS)/OBJ=$(VAX41A_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX41A_LIB2) : $(VAX41A_SOURCE2)
+        $!
+        $! Building The $(VAX41A_LIB2) Library.
+        $!
+        $ $(CC)$(VAX41A_OPTIONS)/OBJ=$(VAX41A_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX41D_LIB1) : $(VAX41D_SOURCE1)
+        $!
+        $! Building The $(VAX41D_LIB1) Library.
+        $!
+        $ $(CC)$(VAX41D_OPTIONS)/OBJ=$(VAX41D_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX41D_LIB2) : $(VAX41D_SOURCE2)
+        $!
+        $! Building The $(VAX41D_LIB2) Library.
+        $!
+        $ $(CC)$(VAX41D_OPTIONS)/OBJ=$(VAX41D_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX42A_LIB1) : $(VAX42A_SOURCE1)
+        $!
+        $! Building The $(VAX42A_LIB1) Library.
+        $!
+        $ $(CC)$(VAX42A_OPTIONS)/OBJ=$(VAX42A_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX42A_LIB2) : $(VAX42A_SOURCE2)
+        $!
+        $! Building The $(VAX42A_LIB2) Library.
+        $!
+        $ $(CC)$(VAX42A_OPTIONS)/OBJ=$(VAX42A_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX42B_LIB1) : $(VAX42B_SOURCE1)
+        $!
+        $! Building The $(VAX42B_LIB1) Library.
+        $!
+        $ $(CC)$(VAX42B_OPTIONS)/OBJ=$(VAX42B_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX42B_LIB2) : $(VAX42B_SOURCE2)
+        $!
+        $! Building The $(VAX42B_LIB2) Library.
+        $!
+        $ $(CC)$(VAX42B_OPTIONS)/OBJ=$(VAX42B_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX43_LIB1) : $(VAX43_SOURCE1)
+        $!
+        $! Building The $(VAX43_LIB1) Library.
+        $!
+        $ $(CC)$(VAX43_OPTIONS)/OBJ=$(VAX43_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX43_LIB2) : $(VAX43_SOURCE2)
+        $!
+        $! Building The $(VAX43_LIB2) Library.
+        $!
+        $ $(CC)$(VAX43_OPTIONS)/OBJ=$(VAX43_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX46_LIB1) : $(VAX46_SOURCE1)
+        $!
+        $! Building The $(VAX46_LIB1) Library.
+        $!
+        $ $(CC)$(VAX46_OPTIONS)/OBJ=$(VAX46_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX46_LIB2) : $(VAX46_SOURCE2)
+        $!
+        $! Building The $(VAX46_LIB2) Library.
+        $!
+        $ $(CC)$(VAX46_OPTIONS)/OBJ=$(VAX46_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX47_LIB1) : $(VAX47_SOURCE1)
+        $!
+        $! Building The $(VAX47_LIB1) Library.
+        $!
+        $ $(CC)$(VAX47_OPTIONS)/OBJ=$(VAX47_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX47_LIB2) : $(VAX47_SOURCE2)
+        $!
+        $! Building The $(VAX47_LIB2) Library.
+        $!
+        $ $(CC)$(VAX47_OPTIONS)/OBJ=$(VAX47_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX48_LIB1) : $(VAX48_SOURCE1)
+        $!
+        $! Building The $(VAX48_LIB1) Library.
+        $!
+        $ $(CC)$(VAX48_OPTIONS)/OBJ=$(VAX48_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(VAX48_LIB2) : $(VAX48_SOURCE2)
+        $!
+        $! Building The $(VAX48_LIB2) Library.
+        $!
+        $ $(CC)$(VAX48_OPTIONS)/OBJ=$(VAX48_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(IS1000_LIB1) : $(IS1000_SOURCE1)
+        $!
+        $! Building The $(IS1000_LIB1) Library.
+        $!
+        $ $(CC)$(IS1000_OPTIONS)/OBJ=$(IS1000_DIR) -
+               /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
+        $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
+             LIBRARY/CREATE $(MMS$TARGET)
+        $ LIBRARY/REPLACE $(MMS$TARGET) $(BLD_DIR)*.OBJ
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+$(IS1000_LIB2) : $(IS1000_SOURCE2)
+        $!
+        $! Building The $(IS1000_LIB2) Library.
+        $!
+        $ $(CC)$(IS1000_OPTIONS)/OBJ=$(IS1000_DIR) -
                /OBJ=$(BLD_DIR) $(MMS$CHANGED_LIST)
         $ IF (F$SEARCH("$(MMS$TARGET)").EQS."") THEN -
              LIBRARY/CREATE $(MMS$TARGET)
@@ -2216,6 +2815,186 @@ $(BIN_DIR)MICROVAX3900-$(ARCH).EXE : $(SIMH_MAIN) $(VAX_SIMH_LIB) $(PCAP_LIBD) $
                $(VAX_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
         $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
         $ COPY $(BIN_DIR)MICROVAX3900-$(ARCH).EXE $(BIN_DIR)VAX-$(ARCH).EXE
+
+VAX410 : $(BIN_DIR)VAX410-$(ARCH).EXE
+        $! VAX410 done
+
+$(BIN_DIR)VAX410-$(ARCH).EXE : $(SIMH_MAIN) $(VAX410_SIMH_LIB) $(PCAP_LIBD) $(VAX410_LIB1) $(VAX410_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX410-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX410_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX410-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX410_LIB1)/LIBRARY,$(VAX410_LIB2)/LIBRARY,-
+               $(VAX410_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX411 : $(BIN_DIR)VAX411-$(ARCH).EXE
+        $! VAX411 done
+
+$(BIN_DIR)VAX411-$(ARCH).EXE : $(SIMH_MAIN) $(VAX411_SIMH_LIB) $(PCAP_LIBD) $(VAX411_LIB1) $(VAX411_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX411-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX411_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX411-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX411_LIB1)/LIBRARY,$(VAX411_LIB2)/LIBRARY,-
+               $(VAX411_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX412 : $(BIN_DIR)VAX412-$(ARCH).EXE
+        $! VAX412 done
+
+$(BIN_DIR)VAX412-$(ARCH).EXE : $(SIMH_MAIN) $(VAX412_SIMH_LIB) $(PCAP_LIBD) $(VAX412_LIB1) $(VAX412_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX412-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX412_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX412-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX412_LIB1)/LIBRARY,$(VAX412_LIB2)/LIBRARY,-
+               $(VAX412_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX41A : $(BIN_DIR)VAX41A-$(ARCH).EXE
+        $! VAX41A done
+
+$(BIN_DIR)VAX41A-$(ARCH).EXE : $(SIMH_MAIN) $(VAX41A_SIMH_LIB) $(PCAP_LIBD) $(VAX41A_LIB1) $(VAX41A_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX41A-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX41A_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX41A-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX41A_LIB1)/LIBRARY,$(VAX41A_LIB2)/LIBRARY,-
+               $(VAX41A_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX41D : $(BIN_DIR)VAX41D-$(ARCH).EXE
+        $! VAX41D done
+
+$(BIN_DIR)VAX41D-$(ARCH).EXE : $(SIMH_MAIN) $(VAX41D_SIMH_LIB) $(PCAP_LIBD) $(VAX41D_LIB1) $(VAX41D_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX41D-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX41D_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX41D-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX41D_LIB1)/LIBRARY,$(VAX41D_LIB2)/LIBRARY,-
+               $(VAX41D_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX42A : $(BIN_DIR)VAX42A-$(ARCH).EXE
+        $! VAX42A done
+
+$(BIN_DIR)VAX42A-$(ARCH).EXE : $(SIMH_MAIN) $(VAX42A_SIMH_LIB) $(PCAP_LIBD) $(VAX42A_LIB1) $(VAX42A_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX42A-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX42A_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX42A-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX42A_LIB1)/LIBRARY,$(VAX42A_LIB2)/LIBRARY,-
+               $(VAX42A_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX42B : $(BIN_DIR)VAX42B-$(ARCH).EXE
+        $! VAX42B done
+
+$(BIN_DIR)VAX42B-$(ARCH).EXE : $(SIMH_MAIN) $(VAX42B_SIMH_LIB) $(PCAP_LIBD) $(VAX42B_LIB1) $(VAX42B_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX42B-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX42B_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX42B-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX42B_LIB1)/LIBRARY,$(VAX42B_LIB2)/LIBRARY,-
+               $(VAX42B_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX43 : $(BIN_DIR)VAX43-$(ARCH).EXE
+        $! VAX43 done
+
+$(BIN_DIR)VAX43-$(ARCH).EXE : $(SIMH_MAIN) $(VAX43_SIMH_LIB) $(PCAP_LIBD) $(VAX43_LIB1) $(VAX43_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX43-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX43_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX43-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX43_LIB1)/LIBRARY,$(VAX43_LIB2)/LIBRARY,-
+               $(VAX43_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX46 : $(BIN_DIR)VAX46-$(ARCH).EXE
+        $! VAX46 done
+
+$(BIN_DIR)VAX46-$(ARCH).EXE : $(SIMH_MAIN) $(VAX46_SIMH_LIB) $(PCAP_LIBD) $(VAX46_LIB1) $(VAX46_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX46-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX46_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX46-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX46_LIB1)/LIBRARY,$(VAX46_LIB2)/LIBRARY,-
+               $(VAX46_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX47 : $(BIN_DIR)VAX47-$(ARCH).EXE
+        $! VAX47 done
+
+$(BIN_DIR)VAX47-$(ARCH).EXE : $(SIMH_MAIN) $(VAX47_SIMH_LIB) $(PCAP_LIBD) $(VAX47_LIB1) $(VAX47_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX47-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX47_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX47-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX47_LIB1)/LIBRARY,$(VAX47_LIB2)/LIBRARY,-
+               $(VAX47_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+VAX48 : $(BIN_DIR)VAX48-$(ARCH).EXE
+        $! VAX48 done
+
+$(BIN_DIR)VAX48-$(ARCH).EXE : $(SIMH_MAIN) $(VAX48_SIMH_LIB) $(PCAP_LIBD) $(VAX48_LIB1) $(VAX48_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)VAX48-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(VAX48_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)VAX48-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(VAX48_LIB1)/LIBRARY,$(VAX48_LIB2)/LIBRARY,-
+               $(VAX48_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
+
+IS1000 : $(BIN_DIR)IS1000-$(ARCH).EXE
+        $! IS1000 done
+
+$(BIN_DIR)IS1000-$(ARCH).EXE : $(SIMH_MAIN) $(IS1000_SIMH_LIB) $(PCAP_LIBD) $(IS1000_LIB1) $(IS1000_LIB2) $(PCAP_EXECLET)
+        $!
+        $! Building The $(BIN_DIR)IS1000-$(ARCH).EXE Simulator.
+        $!
+        $ $(CC)$(IS1000_OPTIONS)/OBJ=$(BLD_DIR) SCP.C
+        $ LINK $(LINK_DEBUG)$(LINK_SECTION_BINDING)-
+               /EXE=$(BIN_DIR)IS1000-$(ARCH).EXE -
+               $(BLD_DIR)SCP.OBJ,-
+               $(IS1000_LIB1)/LIBRARY,$(IS1000_LIB2)/LIBRARY,-
+               $(IS1000_SIMH_LIB)/LIBRARY$(PCAP_LIBR)
+        $ DELETE/NOLOG/NOCONFIRM $(BLD_DIR)*.OBJ;*
 
 MICROVAX1 : $(BIN_DIR)MICROVAX1-$(ARCH).EXE
         $! MICROVAX1 done

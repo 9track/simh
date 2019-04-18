@@ -1912,6 +1912,7 @@ ATT3B2_OPT = -DUSE_INT64 -DUSE_ADDR64 -I ${ATT3B2D} ${NETWORK_OPT}
 #
 ALL = pdp1 pdp4 pdp7 pdp8 pdp9 pdp15 pdp11 pdp10 \
 	vax microvax3900 microvax1 rtvax1000 microvax2 vax730 vax750 vax780 vax8600 \
+	vax410 vax411 vax412 vax41a vax41d vax42a vax42b vax43 vax46 vax47 vax48 is1000 \
 	nova eclipse hp2100 hp3000 i1401 i1620 s3 altair altairz80 gri \
 	i7094 ibm1130 id16 id32 sds lgp h316 cdc1700 \
 	swtp6800mp-a swtp6800mp-a2 tx-0 ssem b5500 isys8010 isys8020 \

@@ -182,7 +182,6 @@ void tbc_wr (int32 rg, int32 val, int32 lnt);
 int32 scn_rd (int32 rg);
 void scn_wr (int32 rg, int32 val, int32 lnt);
 
-uint32 sp_buf[0xA0000];
 
 /* VE data structures
 

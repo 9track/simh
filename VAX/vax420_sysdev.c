@@ -1078,7 +1078,9 @@ tmr_sched ();                                           /* activate */
 
 if (ddb == NULL)
     ddb = (uint32 *) calloc (D128SIZE >> 2, sizeof (uint32));
-buf_sel = 1;
+if (ddb == NULL)
+    return SCPE_MEM;
+buf_sel = 1;                                            /* 128k buffer selected */
 
 sim_vm_cmd = vax420_cmd;
 return SCPE_OK;

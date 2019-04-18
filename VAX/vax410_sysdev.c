@@ -892,9 +892,10 @@ if ((xs_dev.flags & DEV_DIS) == 0)                      /* network option presen
 if (DZ_L3C && (sys_model == 0))                         /* line 3 console */
     ka_cfgtst |= CFGT_L3C;
 
-if (ddb == NULL) {
+if (ddb == NULL)
     ddb = (uint32 *) calloc (D16SIZE >> 2, sizeof (uint32));
-    }
+if (ddb == NULL)
+    return SCPE_MEM;
 
 sim_vm_cmd = vax410_cmd;
 

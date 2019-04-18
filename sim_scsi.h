@@ -92,7 +92,7 @@ struct scsi_bus_t {
     int32 target;                                       /* current target */
     t_bool atn;                                         /* attention flag */
     t_bool req;                                         /* request flag */
-    uint8 buf[0x20000];                                 /* transfer buffer */
+    uint8 *buf;                                         /* transfer buffer */
     uint8 cmd[10];                                      /* command buffer */
     uint32 buf_b;                                       /* buffer bottom ptr */
     uint32 buf_t;                                       /* buffer top ptr */
@@ -120,6 +120,7 @@ void scsi_add_unit (SCSI_BUS *bus, uint32 id, UNIT *uptr);
 void scsi_set_unit (SCSI_BUS *bus, UNIT *uptr, SCSI_DEV *dev);
 void scsi_reset_unit (UNIT *uptr);
 void scsi_reset (SCSI_BUS *bus);
+t_stat scsi_init (SCSI_BUS *bus, uint32 maxfr);
 
 t_stat scsi_set_fmt (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat scsi_set_wlk (UNIT *uptr, int32 val, CONST char *cptr, void *desc);

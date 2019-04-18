@@ -1027,6 +1027,8 @@ tmr_sched ();                                           /* activate */
 
 if (ddb == NULL)
     ddb = (uint32 *) calloc (D128SIZE >> 2, sizeof (uint32));
+if (ddb == NULL)
+    return SCPE_MEM;
 
 tmr_sched ();
 sim_vm_cmd = vax43a_cmd;

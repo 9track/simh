@@ -1043,18 +1043,22 @@ tmr_tir = 0;
 tmr_inst = FALSE;
 tmr_sched ();                                           /* activate */
 
-if (isdn == NULL) {
+if (isdn == NULL)                                       /* dummy mem for ISDN */
     isdn = (uint32 *) calloc (0x4000 >> 2, sizeof (uint32));
-    }
-if (invfl == NULL) {
+if (isdn == NULL)
+    return SCPE_MEM;
+if (invfl == NULL)                                      /* dummy mem for invalidate filter */
     invfl = (uint32 *) calloc (0x8000, sizeof (uint32));
-    }
-if (cache2ds == NULL) {
+if (invfl == NULL)
+    return SCPE_MEM;
+if (cache2ds == NULL)                                   /* dummy mem for cache data store */
     cache2ds = (uint32 *) calloc (0x10002, sizeof (uint32));
-    }
-if (cache2ts == NULL) {
+if (cache2ds == NULL)
+    return SCPE_MEM;
+if (cache2ts == NULL)                                   /* dummy mem for cache tag store */
     cache2ts = (uint32 *) calloc (0x10000, sizeof (uint32));
-    }
+if (cache2ts == NULL)
+    return SCPE_MEM;
 
 sim_clock_coschedule (&sysd_unit, tmr_poll);
 sim_vm_cmd = vax460_cmd;

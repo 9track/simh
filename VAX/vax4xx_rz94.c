@@ -89,7 +89,7 @@ uint32 rz_fifo_b = 0;
 uint32 rz_fifo_c = 0;
 uint32 rz_dma = 0;
 uint32 rz_dir = 0;
-uint8 rz_buf[RZ_MAXFR] = { 0 };
+uint8 *rz_buf;
 SCSI_BUS rz_bus;
 
 /* debugging bitmaps */
@@ -779,7 +779,15 @@ t_stat rz_reset (DEVICE *dptr)
 uint32 i;
 uint32 dtyp;
 UNIT *uptr;
+t_stat r;
 
+if (rz_buf == NULL)
+    rz_buf = (uint8 *)calloc (RZ_MAXFR, sizeof(uint8));
+if (rz_buf == NULL)
+    return SCPE_MEM;
+r = scsi_init (&rz_bus, RZ_MAXFR);                      /* init SCSI bus */
+if (r != SCPE_OK)
+    return r;
 rz_bus.dptr = dptr;                                     /* set bus device */
 for (i = 0; i < 8; i++) {
     uptr = dptr->units + i;

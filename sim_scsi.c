@@ -1454,6 +1454,17 @@ bus->sense_qual = 0;
 bus->sense_info = 0;
 }
 
+/* Initial setup of SCSI bus */
+
+t_stat scsi_init (SCSI_BUS *bus, uint32 maxfr)
+{
+if (bus->buf == NULL)
+    bus->buf = (uint8 *)calloc (maxfr, sizeof(uint8));
+if (bus->buf == NULL)
+    return SCPE_MEM;
+return SCPE_OK;
+}
+
 /* Set device file format */
 
 t_stat scsi_set_fmt (UNIT *uptr, int32 val, CONST char *cptr, void *desc)

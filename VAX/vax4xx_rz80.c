@@ -133,10 +133,10 @@ typedef struct {
     uint32 daddr;                                       /* DMA addr reg */
     t_bool daddr_low;                                   /* DMA addr flag */
     uint32 ddir;                                        /* DMA dir */
-    uint8 unit_buf[DMA_SIZE];
-    int32 unit_buf_ptr;
-    int32 unit_buf_len;
-    SCSI_BUS bus;
+    uint8 *buf;                                         /* unit buffer */
+    int32 buf_ptr;                                      /* current buffer pointer */
+    int32 buf_len;                                      /* current buffer length */
+    SCSI_BUS bus;                                       /* SCSI bus state */
     } CTLR;
 
 DEVICE rz_dev, rzb_dev;
@@ -616,9 +616,9 @@ switch (rz->bus.phase) {
     case PH_COMMAND:
     case PH_DATA_OUT:
         if (rz->bus.phase == PH_DATA_OUT)
-            rz->unit_buf_ptr = 0;                       /* TODO: fix this in sim_scsi.c */
-        rz->unit_buf[rz->unit_buf_ptr++] = rz->odata;
-        scsi_write (&rz->bus, &rz->unit_buf[0], rz->unit_buf_ptr);  /* send next byte */
+            rz->buf_ptr = 0;                            /* TODO: fix this in sim_scsi.c */
+        rz->buf[rz->buf_ptr++] = rz->odata;
+        scsi_write (&rz->bus, &rz->buf[0], rz->buf_ptr);  /* send next byte */
         break;
 
     case PH_DATA_IN:
@@ -628,7 +628,7 @@ switch (rz->bus.phase) {
         break;
         }
 if (old_phase != rz->bus.phase)                         /* new phase? */
-    rz->unit_buf_ptr = 0;                               /* reset buffer */
+    rz->buf_ptr = 0;                                    /* reset buffer */
 if (old_phase == PH_MSG_IN)                             /* message in just processed? */
     scsi_release (&rz->bus);                            /* accept message */
 rz_update_status (rz);
@@ -670,14 +670,14 @@ if (rz->dcount == 0)
 else
     dma_len = ((rz->dcount ^ DCNT_MASK) + 1) & DCNT_MASK; /* 2's complement */
 if (rz->ddir == 1) {                                    /* DMA in */
-    dma_len = scsi_read (&rz->bus, &rz->unit_buf[0], dma_len);
-    ddb_WriteB (rz->daddr, dma_len, &rz->unit_buf[0]);
+    dma_len = scsi_read (&rz->bus, &rz->buf[0], dma_len);
+    ddb_WriteB (rz->daddr, dma_len, &rz->buf[0]);
     }
 else {                                                  /* DMA out */
-    ddb_ReadB (rz->daddr, dma_len, &rz->unit_buf[0]);
-    dma_len = scsi_write (&rz->bus, &rz->unit_buf[0], dma_len);
+    ddb_ReadB (rz->daddr, dma_len, &rz->buf[0]);
+    dma_len = scsi_write (&rz->bus, &rz->buf[0], dma_len);
     }
-rz->unit_buf_len = 0;
+rz->buf_len = 0;
 rz->dcount = (rz->dcount + dma_len) & DCNT_MASK;        /* increment toward zero */
 dma_len = ((rz->dcount ^ DCNT_MASK) + 1) & DCNT_MASK;   /* 2's complement */
 if (rz->ddir == 1) {                                    /* DMA in */
@@ -763,7 +763,7 @@ rz->dcount = 0;
 rz->daddr = 0;
 rz->daddr_low = FALSE;
 rz->ddir = 0;
-rz->unit_buf_ptr = 0;
+rz->buf_ptr = 0;
 scsi_reset (&rz->bus);
 }
 
@@ -773,6 +773,7 @@ int32 ctlr, i;
 uint32 dtyp;
 CTLR *rz;
 UNIT *uptr;
+t_stat r;
 
 for (i = 0, ctlr = -1; i < RZ_NUMCT; i++) {             /* find ctrl num */
     if (rz_devmap[i] == dptr)
@@ -781,6 +782,13 @@ for (i = 0, ctlr = -1; i < RZ_NUMCT; i++) {             /* find ctrl num */
 if (ctlr < 0)                                           /* not found??? */
     return SCPE_IERR;
 rz = rz_ctxmap[ctlr];
+if (rz->buf == NULL)
+    rz->buf = (uint8 *)calloc (DMA_SIZE, sizeof(uint8));
+if (rz->buf == NULL)
+    return SCPE_MEM;
+r = scsi_init (&rz->bus, DMA_SIZE);                     /* init SCSI bus */
+if (r != SCPE_OK)
+    return r;
 rz->bus.dptr = dptr;                                    /* set bus device */
 for (i = 0; i < (RZ_NUMDR + 1); i++) {                  /* init units */
     uptr = dptr->units + i;

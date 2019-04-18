@@ -141,7 +141,7 @@
    RD54 17      15      1225    15      1       7*8     311256
 */
 
-#define RX33_DTYPE      1
+#define RX33_DTYPE      0
 #define RX33_SECT       15
 #define RX33_SURF       2
 #define RX33_CYL        80
@@ -158,7 +158,7 @@
 #define RX33_MED        0x25658021
 #define RX33_FLGS       RDDF_RMV
 
-#define RD31_DTYPE      2
+#define RD31_DTYPE      1
 #define RD31_SECT       17
 #define RD31_SURF       4
 #define RD31_CYL        616                             /* last unused */
@@ -175,7 +175,7 @@
 #define RD31_MED        0x2564401F
 #define RD31_FLGS       0
 
-#define RD32_DTYPE      3
+#define RD32_DTYPE      2
 #define RD32_SECT       17
 #define RD32_SURF       6
 #define RD32_CYL        821                             /* last unused */
@@ -192,7 +192,7 @@
 #define RD32_MED        0x25644020
 #define RD32_FLGS       0
 
-#define RD53_DTYPE      4
+#define RD53_DTYPE      3
 #define RD53_SECT       17
 #define RD53_SURF       8
 #define RD53_CYL        1024                            /* last unused */
@@ -209,7 +209,7 @@
 #define RD53_MED        0x25644035
 #define RD53_FLGS       0
 
-#define RD54_DTYPE      5
+#define RD54_DTYPE      4
 #define RD54_SECT       17
 #define RD54_SURF       15
 #define RD54_CYL        1225                            /* last unused */

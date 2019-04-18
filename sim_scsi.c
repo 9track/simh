@@ -412,11 +412,11 @@ else {
     bus->buf[bus->buf_b++] = 0;                         /* reserved */
     bus->buf[bus->buf_b++] = 0;
 
-    sprintf (&bus->buf[bus->buf_b], "%-8s", dev->manufacturer);
+    sprintf ((char *)&bus->buf[bus->buf_b], "%-8s", dev->manufacturer);
     bus->buf_b += 8;
-    sprintf (&bus->buf[bus->buf_b], "%-16s", dev->product);
+    sprintf ((char *)&bus->buf[bus->buf_b], "%-16s", dev->product);
     bus->buf_b += 16;
-    sprintf (&bus->buf[bus->buf_b], "%-4s", dev->rev);
+    sprintf ((char *)&bus->buf[bus->buf_b], "%-4s", dev->rev);
     bus->buf_b += 4;
     }
 

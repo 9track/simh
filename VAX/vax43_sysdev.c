@@ -1079,7 +1079,7 @@ else if (MATCH_CMD(gbuf, "VAXSTATION") == 0) {
     strcpy (sim_name, "VAXstation 3100 M76 (KA43)");
     reset_all (0);                                       /* reset everything */
 #else
-    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support");
+    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support\n");
 #endif
     }
 else if (MATCH_CMD(gbuf, "VAXSTATIONSPX") == 0) {
@@ -1092,7 +1092,7 @@ else if (MATCH_CMD(gbuf, "VAXSTATIONSPX") == 0) {
     strcpy (sim_name, "VAXstation 3100 M76/SPX (KA43)");
     reset_all (0);                                       /* reset everything */
 #else
-    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support");
+    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support\n");
 #endif
     }
 else

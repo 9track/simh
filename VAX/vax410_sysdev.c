@@ -945,7 +945,7 @@ else if (MATCH_CMD(gbuf, "VAXSTATION") == 0) {
     strcpy (sim_name, "VAXStation 2000 (KA410)");
     reset_all (0);                                       /* reset everything */
 #else
-    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support");
+    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support\n");
 #endif
     }
 else if (MATCH_CMD(gbuf, "VAXSTATIONGPX") == 0) {
@@ -957,7 +957,7 @@ else if (MATCH_CMD(gbuf, "VAXSTATIONGPX") == 0) {
     vs_dev.flags = vs_dev.flags & ~DEV_DIS;              /* enable mouse */
     reset_all (0);                                       /* reset everything */
 #else
-    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support");
+    return sim_messagef (SCPE_ARG, "Simulator built without Graphic Device Support\n");
 #endif
     }
 else

@@ -986,8 +986,6 @@ return SCPE_OK;
 
 t_stat sysd_reset (DEVICE *dptr)
 {
-uint32 i;
-
 ka_mapbase = 0;
 ka_cfgtst = CFGT_L3C;
 ka_led = 0;

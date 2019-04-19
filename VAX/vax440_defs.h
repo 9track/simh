@@ -237,25 +237,6 @@ typedef struct {
     t_addr              rom_size;                       /* option ROM size */
     } DIB;
 
-/* I/O page layout */
-
-#define IOBA_DZ         0x200A0000
-#define IOLN_DZ         020
-#define IOBA_RD         0x200C0000
-#define IOLN_RD         010
-#define IOBA_TPC        0x200C0080
-#define IOLN_TPC        0200
-#define IOBA_DDB        0x200D0000
-#define IOLN_DDB        040000
-#define IOBA_XS         0x200E0000
-#define IOLN_XS         010
-#define IOBA_MVO        0x200F0000
-#define IOLN_MVO        077
-#define IOBA_OR         0x20100000
-#define IOLN_OR         04000000
-#define IOBA_NIR        0x20100000
-#define IOLN_NIR        01000000
-
 /* Within each IPL, priority is left to right */
 
 /* IPL 14 */
@@ -315,7 +296,7 @@ extern int32 sys_model;
 
 /* Machine specific definitions - RZ94 */
 
-#define RZ_SCSI_ID      0                               /* initiator SCSI id */
+#define RZ_SCSI_ID      6                               /* initiator SCSI id */
 #define RZ_READB        Map_ReadB
 #define RZ_READW        Map_ReadW
 #define RZ_WRITEB       Map_WriteB

@@ -119,8 +119,6 @@ CTAB vax460_cmd[] = {
 
 #define ROM_VEC         0x8                             /* ROM longword for first device vector */
 
-#define TMR_INC         10000                           /* usec/interval */
-
 /* DMA map registers */
 
 #define DMANMAPR        32768                           /* number of map reg */
@@ -130,8 +128,6 @@ CTAB vax460_cmd[] = {
 #define DMAMAP_WR       (QBMAP_VLD | QBMAP_PAG)
 
 extern int32 tmr_int;
-extern UNIT clk_unit;
-extern int32 tmr_poll;
 extern DEVICE lk_dev, vs_dev;
 extern uint32 *rom;
 
@@ -152,17 +148,12 @@ int32 sys_model = 0;                                    /* MicroVAX or VAXstatio
 int32 int_req[IPL_HLVL] = { 0 };                        /* interrupt requests */
 int32 int_mask = 0;                                     /* interrupt mask */
 uint32 tmr_tir = 0;                                     /* curr interval */
-uint32 tmr_tirb = 0;                                    /* curr interval */
-t_bool tmr_inst = FALSE;                                /* wait instructions vs usecs */
 
-t_stat tmr_svc (UNIT *uptr);
 t_stat sysd_reset (DEVICE *dptr);
 const char *sysd_description (DEVICE *dptr);
 int32 ka_rd (int32 pa);
 void ka_wr (int32 pa, int32 val, int32 lnt);
 int32 con_halt (int32 code, int32 cc);
-int32 tmr_tir_rd (void);
-void tmr_sched ();
 
 extern int32 iccs_rd (void);
 extern int32 rom_rd (int32 pa);
@@ -178,7 +169,7 @@ extern void dz_wr (int32 pa, int32 val, int32 lnt);
 extern void rz_wr (int32 pa, int32 val, int32 lnt);
 extern void xs_wr (int32 pa, int32 val, int32 lnt);
 
-UNIT sysd_unit = { UDATA (&tmr_svc, 0, 0) };
+UNIT sysd_unit = { UDATA (NULL, 0, 0) };
 
 REG sysd_reg[] = {
     { HRDATAD (CONISP,  conisp,     32, "console ISP") },
@@ -736,7 +727,7 @@ struct reglink regtable[] = {
     { RZBASE, RZBASE+RZSIZE, &rz_rd, rz_wr },
     { ORBASE, ORBASE+ORSIZE, &or_rd, NULL },
     { NARBASE, NARBASE+NARSIZE, &nar_rd, NULL },
-    { CFGBASE, CFGBASE+CFGBASE, &cfg_rd, &ioreset_wr },
+    { CFGBASE, CFGBASE+CFGSIZE, &cfg_rd, &ioreset_wr },
     { 0x20200000, 0x20220000, &invfl_rd, &invfl_wr },   /* Invalidate filter */
     { 0x23000000, 0x23000004, &sccr_rd, &sccr_wr },
     { 0x36800000, 0x36800004, &null_rd, &null_wr },     /* Turbo CSR */
@@ -850,8 +841,8 @@ switch (rg) {
         return ka_parctl & PARCTL_RD;
 
     case 7:                                             /* diag timer */
-        tmr_tirb = (tmr_tirb + 1) & 0xFFFF;
-        return (tmr_tirb << 16) | tmr_tirb;
+        tmr_tir = (tmr_tir + 5) & 0xFFFF;
+        return (tmr_tir << 16) | tmr_tir;
         }
 
 return 0;
@@ -897,48 +888,9 @@ switch (rg) {
         break;
 
     case 7:                                             /* diag timer */
-        tmr_tirb = (val >> 16);
+        tmr_tir = (val >> 16);
         }
 return;
-}
-
-int32 tmr_tir_rd (void)
-{
-uint32 usecs_remaining, cur_tir;
-
-if ((ADDR_IS_ROM(fault_PC)) &&                          /* running from ROM and */
-    (tmr_inst))                                         /* waiting instructions? */
-    usecs_remaining = sim_activate_time (&sysd_unit) - 1;
-else
-    usecs_remaining = (uint32)sim_activate_time_usecs (&sysd_unit);
-cur_tir = (~usecs_remaining + 1) & 0xFFFF;
-return cur_tir;
-}
-
-/* Unit service */
-
-t_stat tmr_svc (UNIT *uptr)
-{
-tmr_sched ();                                           /* reactivate */
-return SCPE_OK;
-}
-
-/* Timer scheduling */
-
-void tmr_sched ()
-{
-uint32 usecs_sched = tmr_tir ? (~tmr_tir + 1) : 0xFFFF;
-tmr_tir = 0;
-
-if ((ADDR_IS_ROM(fault_PC)) &&                      /* running from ROM and */
-    (usecs_sched < TMR_INC)) {                      /* short delay? */
-    tmr_inst = TRUE;                                /* wait for instructions */
-    sim_activate (&sysd_unit, usecs_sched);
-    }
-else {
-    tmr_inst = FALSE;
-    sim_activate_after (&sysd_unit, usecs_sched);
-    }
 }
 
 /* Machine check */
@@ -1034,14 +986,13 @@ return SCPE_OK;
 
 t_stat sysd_reset (DEVICE *dptr)
 {
+uint32 i;
+
 ka_mapbase = 0;
 ka_cfgtst = CFGT_L3C;
 ka_led = 0;
 ka_parctl = 0xF0;
-tmr_tirb = 0;
 tmr_tir = 0;
-tmr_inst = FALSE;
-tmr_sched ();                                           /* activate */
 
 if (isdn == NULL)                                       /* dummy mem for ISDN */
     isdn = (uint32 *) calloc (0x4000 >> 2, sizeof (uint32));
@@ -1060,7 +1011,6 @@ if (cache2ts == NULL)                                   /* dummy mem for cache t
 if (cache2ts == NULL)
     return SCPE_MEM;
 
-sim_clock_coschedule (&sysd_unit, tmr_poll);
 sim_vm_cmd = vax460_cmd;
 
 return SCPE_OK;

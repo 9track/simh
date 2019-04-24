@@ -350,7 +350,7 @@ switch (opcode) {
         return ci_cnfrec (pkt);
 
     default:
-        sim_debug (DBG_WRN, &ci_dev, "Unimplemented Opcode: %d\n", opcode);
+        sim_printf ("CI: unimplemented opcode %02X\n", opcode);
         }
 return SCPE_IOERR; // TODO: need local status
 }
@@ -1038,6 +1038,11 @@ ci_close_sock (ci_vcd[port].socket, 0);
 ci_vcd[port].socket = 0;
 ci_vcd[port].state = VCST_CLOSED;
 return SCPE_OK;
+}
+
+t_stat ci_check_vc (uint8 port)
+{
+return VC_OPEN (port) ? TRUE : FALSE;
 }
 
 /* Notifies the operating system that the connection with the *

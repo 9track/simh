@@ -169,6 +169,7 @@ t_stat ci_send_packet (CI_PKT *pkt, size_t length);
 t_stat ci_receive_packet (CI_PKT *pkt, uint8 port);
 t_stat ci_open_vc (uint8 port);
 t_stat ci_close_vc (uint8 port);
+t_bool ci_check_vc (uint8 port);
 t_stat ci_show_node (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
 t_stat ci_set_node (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat ci_show_tcp (FILE *st, UNIT *uptr, int32 val, CONST void *desc);

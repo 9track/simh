@@ -134,28 +134,36 @@ t_stat ci_port_command (int32 queue)
 uint32 ent_addr;
 int16 length;
 CI_PKT pkt;
+t_stat r;
 
 for ( ;; ) {
     ent_addr = gvp_remqhi (&ci_mmu, ci_pqbb_va + queue);
 
     if (ent_addr == 0)
-        return SCPE_OK;
+        break;
     if (ent_addr == (ci_pqbb_va + queue))
-        return SCPE_OK;
+        break;
 
     if (ent_addr & 0x3)
-        printf ("Command queue packet not LW aligned\n");
+        sim_printf ("CI: command queue packet not LW aligned\n");
     
     pkt.addr = ent_addr;
     length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD);
+    if (length == 0) {
+        sim_printf ("CI: zero length packet\n");
+        break;
+        }
     if (length < 0) {
         ent_addr = ent_addr + length;                   /* offset to network header */
         length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD) + length;
         }
     pkt.length = length;
     ci_read_packet (&pkt, CI_MAXFR);
-    ci_route_ppd (&pkt);
+    r = ci_route_ppd (&pkt);
+    if (r != SCPE_OK)
+        break;
     }
+return SCPE_OK;
 }
 
 /* Read CI port register */
@@ -409,12 +417,10 @@ return SCPE_OK;
 
 t_stat ci_request_id (CI_PKT *pkt)
 {
-pkt->data[PPD_PORT] = port;                             /* add remote port number */
+uint32 port = pkt->data[PPD_PORT];
 pkt->data[PPD_STATUS] = 0;                              /* status: OK */
 pkt->data[PPD_OPC] = OPC_RETID;                         /* set opcode */
-pkt->data[PPD_FLAGS] &= ~PPD_RSP;                       /* clear response flag */
-pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);             /* add send path */
-if (VC_OPEN (port)) {                                   /* don't send ID once VC is open? */
+if (ci_check_vc (port)) {                               /* don't send ID once VC is open? */
     CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
     }
 else {
@@ -433,6 +439,7 @@ CI_PUT32 (pkt->data, 0x20, 0xFFFF0F00);                 /* function mask */
 pkt->data[0x24] = 0x0;                                  /* resetting port */
 // TODO: should also respond when disabled?
 pkt->data[0x25] = 0x4;                                  /* port state (maint = 0, state = enabled) */
+pkt->length = 0x26;
 return ci_route_ppd (pkt);
 }
 

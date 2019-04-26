@@ -59,7 +59,7 @@
 
 #include "vax_defs.h"
 #include "vax_ci.h"
-#include "ci_sock.h"
+#include "sim_sock.h"
 #include <time.h>
 
 /* Virtual Circuit States */
@@ -85,6 +85,13 @@
 #define VCD_OPEN(x)     (x & VCD_CST)
 #define VC_OPEN(p)      (ci_vcd[p].state > VCST_CLOSED) /* virtual circuit open */
 #define DG_INHIBIT(x)   (x & VCD_IDG)
+
+/* Network packet header */
+
+#define HDR_LENGTH      0                               /* packet length */
+#define HDR_SOURCE      2                               /* source CI port */
+#define HDR_PRIORITY    4                               /* TCP connection priority */
+#define HDR_VCPORT      6                               /* virtual circuit TCP port */
 
 const char* ppd_types[] = {                             /* PPD debug definitions */
     "START",
@@ -117,9 +124,8 @@ const char* ci_path_names[] = {
 /* Virtual Circuit Descriptor */
 
 typedef struct {
-    uint32    socket;                                   /* TCP Socket of this VC */
-    int32     ipa;                                      /* IP of remote system */
-    int32     ipp;                                      /* Port of remote system */
+    SOCKET    socket;                                   /* TCP Socket of this VC */
+    char      host[CBUFSIZE];                           /* IP address of remote system */
     int32     pri;                                      /* Priority */
     uint32    vcd_val;                                  /* VCD value */
     uint32    state;                                    /* VC state */
@@ -142,11 +148,11 @@ typedef struct {
 
 #define CI_QUE_MAX           100                        /* message queue array */
 
-int32 ci_multi_ip;                                      /* multicast ip address */
-int32 ci_multi_port;                                    /* multicast port */
+char ci_group[CBUFSIZE];                                /* multicast group address */
+char ci_tcp_port[CBUFSIZE];                             /* VC port */
 SOCKET ci_multi_sock = 0;                               /* multicast socket */
-int32 ci_tcp_port;                                      /* VC port */
 SOCKET ci_tcp_sock = 0;                                 /* VC socket */
+SOCKET ci_wait_sock[CI_MAX_NODES];                      /* pending connections */
 int32 ci_pri;                                           /* connection priority */
 uint32 ci_node;                                         /* local port number */
 uint32 ci_state;                                        /* port state */
@@ -208,7 +214,6 @@ extern t_bool ci_can_receive ();
 void ci_set_state (uint32 state)
 {
 int32 r;
-uint32 ipa, ipp;
 UNIT *uptr = &ci_dev.units[0];
 
 if (state < PORT_INIT) {                                /* change to uninit */
@@ -216,7 +221,7 @@ if (state < PORT_INIT) {                                /* change to uninit */
         sim_cancel (uptr);                              /* stop poll */
         sim_debug (DBG_CONN, &ci_dev, "deactivating unit\n");
         ciq_clear (&ci_rx_queue);                       /* clear queue */
-        do r = ci_read_sock_udp (ci_multi_sock, rcv_pkt.data, CI_MAXFR, &ipa, &ipp);
+        do r = sim_read_sock (ci_multi_sock, rcv_pkt.data, CI_MAXFR);
         while (r > 0);                                  /* clear network buffer */
         }
     }
@@ -1013,8 +1018,8 @@ if (ci_pri < ci_vcd[port].pri) {                        /* are we the server? */
     ci_vcd[port].state = VCST_WAIT;
     return SCPE_OK;                                     /* yes, done */
     }
-sim_debug (DBG_CONN, &ci_dev, "Connecting to node %d at %08X on port %d...\n", port, ci_vcd[port].ipa, ci_vcd[port].ipp);
-newsock = ci_connect_sock (ci_vcd[port].ipa, ci_vcd[port].ipp);
+sim_debug (DBG_CONN, &ci_dev, "Connecting to node %d at %s...\n", port, ci_vcd[port].host);
+newsock = sim_connect_sock (ci_vcd[port].host, NULL, NULL);
 if (newsock == INVALID_SOCKET) {
     sim_debug (DBG_CONN, &ci_dev, "Unable to establish VC to node %d\n", port);
     return SCPE_OPENERR;
@@ -1034,7 +1039,7 @@ if (port == ci_node) {                                  /* local port? */
     return SCPE_OK;
     }
 sim_debug (DBG_CONN, &ci_dev, "Closing VC with node %d...\n", port);
-ci_close_sock (ci_vcd[port].socket, 0);
+sim_close_sock (ci_vcd[port].socket);
 ci_vcd[port].socket = 0;
 ci_vcd[port].state = VCST_CLOSED;
 return SCPE_OK;
@@ -1073,10 +1078,10 @@ CI_PKT tpkt;
 
 memcpy (&tpkt, pkt, sizeof (CI_PKT));                   /* make local copy */
 
-CI_PUT16 (tpkt.data, 0x0, size);
-tpkt.data[0x2] = ci_node;                               /* local port number */
-CI_PUT16 (tpkt.data, 0x4, ci_tcp_port);                 /* VC port */
-CI_PUT16 (tpkt.data, 0x6, ci_pri);                      /* priority */
+CI_PUT16 (tpkt.data, HDR_LENGTH, size);
+tpkt.data[HDR_SOURCE] = ci_node;                        /* local port number */
+CI_PUT16 (tpkt.data, HDR_PRIORITY, ci_pri);             /* priority */
+strncpy (&tpkt.data[HDR_VCPORT], ci_tcp_port, 5);       /* VC port */
 
 if (port == ci_node) {                                  /* loopback? */
     sim_debug (DBG_CONN, &ci_dev, "packet destination is local node\n");
@@ -1086,7 +1091,7 @@ if (port == ci_node) {                                  /* loopback? */
 
 if ((ci_vcd[port].state == VCST_OPEN) && (opcode != OPC_REQID) && (opcode != OPC_RETID)) {
     if (ci_tx_queue.count == 0) {
-        r = ci_write_sock_tcp (ci_vcd[port].socket, tpkt.data, CI_MAXFR); /* send packet */
+        r = sim_write_sock (ci_vcd[port].socket, tpkt.data, CI_MAXFR); /* send packet */
         if (r < 0)
             ciq_insert (&ci_tx_queue, port, &tpkt);
         }
@@ -1094,7 +1099,7 @@ if ((ci_vcd[port].state == VCST_OPEN) && (opcode != OPC_REQID) && (opcode != OPC
         ciq_insert (&ci_tx_queue, port, &tpkt);
     }
 else
-    r = ci_write_sock_udp (ci_multi_sock, tpkt.data, size, ci_multi_ip, ci_multi_port); /* send packet */
+    r = sim_write_sock_ex (ci_multi_sock, tpkt.data, size, ci_group, SIM_SOCK_OPT_DATAGRAM); /* send packet */
 
 return SCPE_OK;
 }
@@ -1124,10 +1129,7 @@ if (!que->item) {                                       /* create dynamic queue 
     if (que->item)
         memset (que->item, 0, size);                    /* init dynamic memory */
     else {                                              /* failed to allocate memory */
-        char* msg = "CIQ: failed to allocate dynamic queue[%d]\r\n";
-        printf (msg, max);
-        if (sim_log)
-            fprintf (sim_log, msg, max);
+        sim_printf ("CI: failed to allocate dynamic queue[%d]\n", max);
         return SCPE_MEM;
         };
     };
@@ -1185,10 +1187,12 @@ uint8  dest_ci_port;
 uint32  ipa, ipp;
 t_stat r;
 CI_ITEM *item;
+char *src_addr;
+char host[CBUFSIZE];
 
 while ((ci_rx_queue.count > 0) && ci_can_receive ()) {  /* process receive queue */
     if (ci_rx_queue.loss > 0)
-        printf("Warning: CI queue packet loss is %d\n", ci_rx_queue.loss);
+        sim_printf ("Warning: CI queue packet loss is %d\n", ci_rx_queue.loss);
     item = &ci_rx_queue.item[ci_rx_queue.head];
     ci_receive_packet (&item->pkt, item->port);
     ciq_remove (&ci_rx_queue);                          /* remove processed packet from queue */
@@ -1201,9 +1205,9 @@ if ((uptr->flags & UNIT_ATT) == 0) {                    /* cables attached? */
 
 while (ci_tx_queue.count > 0) {                         /* process transmit queue */
     if (ci_tx_queue.loss > 0)
-        printf ("Warning: CI queue packet loss is %d\n", ci_tx_queue.loss);
+        sim_printf ("Warning: CI queue packet loss is %d\n", ci_tx_queue.loss);
     item = &ci_tx_queue.item[ci_tx_queue.head];
-    r = ci_write_sock_tcp (ci_vcd[item->port].socket, item->pkt.data, CI_MAXFR);
+    r = sim_write_sock (ci_vcd[item->port].socket, item->pkt.data, CI_MAXFR);
     if (r < 0) break;
     ciq_remove (&ci_tx_queue);                          /* remove processed packet from queue */
     }
@@ -1212,41 +1216,63 @@ if (ci_state >= PORT_ENABLED) {                         /* Check multicast chann
     do {
         if (ci_rx_queue.count == CI_QUE_MAX)
             break;
-        r = ci_read_sock_udp (ci_multi_sock, rcv_pkt.data, CI_MAXFR, &ipa, &ipp);
+        r = sim_read_sock_ex (ci_multi_sock, rcv_pkt.data, CI_MAXFR, &src_addr);
         if (r > 0) {
-            src_ci_port = rcv_pkt.data[0x2];
+            sim_parse_addr (src_addr, host, sizeof (host), NULL, NULL, 0, NULL, NULL);
+            free (src_addr);
+            src_ci_port = rcv_pkt.data[HDR_SOURCE];
             dest_ci_port = rcv_pkt.data[PPD_PORT];
             if ((dest_ci_port == ci_node) && (src_ci_port != ci_node)) {
-                ci_vcd[src_ci_port].ipa = ipa;
-                ci_vcd[src_ci_port].ipp = CI_GET16 (rcv_pkt.data, 0x4);
-                ci_vcd[src_ci_port].pri = CI_GET16 (rcv_pkt.data, 0x6);
-                //printf("multicast packet - src: %d, dest: %d\n", src_ci_port, dest_ci_port);
-                rcv_pkt.length = CI_GET16 (rcv_pkt.data, 0);
+                sprintf (ci_vcd[src_ci_port].host, "%s:%.5s", host, rcv_pkt.data[HDR_VCPORT]);
+                ci_vcd[src_ci_port].pri = CI_GET16 (rcv_pkt.data, HDR_PRIORITY);
+                rcv_pkt.length = CI_GET16 (rcv_pkt.data, HDR_LENGTH);
                 ciq_insert (&ci_rx_queue, src_ci_port, &rcv_pkt);
                 }
             }
         if (r < 0) {
-            printf ("CI: multicast socket read error\n");
+            sim_printf ("CI: multicast socket read error\n");
             return SCPE_IOERR;
             }
         } while (r > 0);
     }
 
+for (i = 0; i < CI_MAX_NODES; i++) {                    /* check pending connections */
+    if (ci_wait_sock[i] > 0) {
+        r = sim_check_conn (ci_wait_sock[i], TRUE);     /* anything to receive? */
+        if (r < 0) continue;                            /* no, continue */
+        r = sim_read_sock (ci_wait_sock[i], rcv_pkt.data, CI_MAXFR);
+        if (r == 0) continue;                           /* nothing received, continue */
+        src_ci_port = rcv_pkt.data[HDR_SOURCE];
+        if (ci_vcd[src_ci_port].socket > 0) {           /* VC already open? */
+            sim_close_sock (ci_wait_sock[i]);           /* reject connection */
+            ci_wait_sock[i] = 0;                        /* clear pending connection */
+            }
+        else {
+            sim_debug (DBG_CONN, &ci_dev, "Accepting connection from node %d, socket: %d\n", src_ci_port, ci_wait_sock[i]);
+            rcv_pkt.length = CI_GET16 (rcv_pkt.data, HDR_LENGTH);
+            ciq_insert (&ci_rx_queue, src_ci_port, &rcv_pkt);
+            ci_vcd[src_ci_port].socket = ci_wait_sock[i];
+            ci_vcd[src_ci_port].state = VCST_OPEN;
+            ci_wait_sock[i] = 0;                        /* clear pending connection */
+            }
+        }
+    }
+
 for (i = 0; i < CI_MAX_NODES; i++) {                    /* poll open VCs */
-    if (ci_rx_queue.count == CI_QUE_MAX)
-        break;
-    if (i == ci_node)
-        continue;
-    if (ci_vcd[i].socket != 0) {
+    if (ci_rx_queue.count == CI_QUE_MAX)                /* queue full? */
+        break;                                          /* yes, don't receive any more */
+    if (i == ci_node)                                   /* local node? */
+        continue;                                       /* yes, skip */
+    if (ci_vcd[i].socket != 0) {                        /* connection established? */
         do {
-            if (ci_rx_queue.count == CI_QUE_MAX)
-                break;
-            r = ci_read_sock_tcp (ci_vcd[i].socket, rcv_pkt.data, CI_MAXFR);
+            if (ci_rx_queue.count == CI_QUE_MAX)        /* queue full? */
+                break;                                  /* yes, don't receive any more */
+            r = sim_read_sock (ci_vcd[i].socket, rcv_pkt.data, CI_MAXFR);
             rcv_pkt.length = CI_GET16 (rcv_pkt.data, 0);
             if (r > 0) ciq_insert (&ci_rx_queue, i, &rcv_pkt);
             if (r < 0) {
                 sim_debug (DBG_CONN, &ci_dev, "Node %d closed VC, socket: %d\n", i, ci_vcd[i].socket);
-                ci_fail_vc (i);
+                ci_fail_vc (i);                         /* notify VC failure */
                 }
             } while (r > 0);
         }
@@ -1254,19 +1280,18 @@ for (i = 0; i < CI_MAX_NODES; i++) {                    /* poll open VCs */
 
 while ((ci_rx_queue.count > 0) && ci_can_receive ()) {  /* process receive queue */
     if (ci_rx_queue.loss > 0)
-        printf ("Warning: CI queue packet loss is %d\n", ci_rx_queue.loss);
+        sim_printf ("Warning: CI queue packet loss is %d\n", ci_rx_queue.loss);
     item = &ci_rx_queue.item[ci_rx_queue.head];
     ci_receive_packet (&item->pkt, item->port);
     ciq_remove (&ci_rx_queue);                          /* remove processed packet from queue */
 }
 
-newsock = ci_accept_conn (ci_tcp_sock, &ipa);           /* check for new VCs */
+newsock = sim_accept_conn (ci_tcp_sock, NULL);          /* check for new VCs */
 if (newsock != INVALID_SOCKET)  {
-    for (i = 0; i < CI_MAX_NODES; i++) {
-        if (ci_vcd[i].ipa == ipa) {
-            sim_debug (DBG_CONN, &ci_dev, "Accepting connection from node %d, socket: %d\n", src_ci_port, newsock);
-            ci_vcd[i].socket = newsock;
-            ci_vcd[i].state = VCST_OPEN;
+    for (i = 0; i < CI_MAX_NODES; i++) {                /* find free queue entry */
+        if (ci_wait_sock[i] == 0) {
+            ci_wait_sock[i] = newsock;                  /* save socket in queue */
+            break;
             }
         }
     }
@@ -1299,13 +1324,13 @@ ciq_clear (&ci_tx_queue);
 for (i = 0; i < CI_MAX_NODES; i++) {
     // TODO: should check for open virtual circuits and close them?
     if (ci_vcd[i].socket != 0) {
-        ci_close_sock (ci_vcd[i].socket, 0);
+        sim_close_sock (ci_vcd[i].socket);
         ci_vcd[i].socket = 0;
         }
     ci_vcd[i].vcd_val = 0;                              /* clear VCD table */
-    ci_vcd[i].ipa = 0;
-    ci_vcd[i].ipp = 0;
+    ci_vcd[i].host[0] = '\0';
     ci_vcd[i].state = VCST_CLOSED;
+    ci_wait_sock[i] = 0;
     }
 
 srand (time (NULL));
@@ -1319,63 +1344,36 @@ t_stat ci_attach (UNIT *uptr, CONST char *cptr)
 {
 char* tptr;
 t_stat r;
-int32 ipa, ipp;
 SOCKET multi_sock, tcp_sock;
 
 if (uptr->flags & UNIT_ATT)
     return SCPE_ALATT;
-if (ci_tcp_port == 0) {
-    fprintf (stderr, "Must set TCP port first\n");
-    return SCPE_ARG;
-    }
-r = get_ipaddr (cptr, &ipa, &ipp);                      /* get multicast addr */
-if (r != SCPE_OK)
-    return SCPE_ARG;
-
-if (ipp == ci_tcp_port) {
-    fprintf (stderr, "Multicast port cannot be same as TCP port\n");
+if (ci_group[0] == '\0') {
+    sim_printf ("Must set group address first\n");
     return SCPE_ARG;
     }
 
-if (ipa < 0xE0000000) {                                 /* check it is valid */
-    fprintf (stderr, "Invalid multicast address\n");
-    return SCPE_ARG;
-    }
+multi_sock = sim_master_sock_ex (ci_group, NULL,
+    (SIM_SOCK_OPT_REUSEADDR | SIM_SOCK_OPT_MULTICAST)); /* make multicast socket */
+if (multi_sock == INVALID_SOCKET)
+    return SCPE_OPENERR;                                /* open error */
+sim_printf ("Listening on multicast address %s (socket %d)\n", ci_group, multi_sock);
+
+sim_parse_addr (cptr, NULL, 0, NULL, ci_tcp_port, sizeof (ci_tcp_port), NULL, NULL);
+tcp_sock = sim_master_sock (cptr, NULL);                /* make tcp socket */
+if (tcp_sock == INVALID_SOCKET)
+    return SCPE_OPENERR;                                /* open error */
+sim_printf ("Listening on TCP address %s (socket %d)\n", cptr, tcp_sock);
 
 tptr = (char *) malloc (strlen (cptr) + 1);             /* get string buf */
 if (tptr == NULL)                                       /* no more mem? */
     return SCPE_MEM;
 
-multi_sock = ci_master_sock (ipp, SCPN_MCS);            /* make multicast socket */
-if (multi_sock == INVALID_SOCKET) {
-    free (tptr);                                        /* release buf */
-    return SCPE_OPENERR;                                /* open error */
-    }
-r = ci_setipmulticast(multi_sock, ipa);
-if (r != SCPE_OK) {
-    free (tptr);                                        /* release buf */
-    return SCPE_OPENERR;                                /* open error */
-    }
-printf ("Listening on multicast port %d (socket %d)\n", ipp, multi_sock);
-if (sim_log) fprintf (sim_log,
-    "Listening on multicast port %d (socket %d)\n", ipp, multi_sock);
-
-tcp_sock = ci_master_sock (ci_tcp_port, SCPN_TCP);      /* make tcp socket */
-if (tcp_sock == INVALID_SOCKET) {
-    free (tptr);                                        /* release buf */
-    return SCPE_OPENERR;                                /* open error */
-    }
-printf ("Listening on TCP port %d (socket %d)\n", ci_tcp_port, tcp_sock);
-if (sim_log) fprintf (sim_log,
-    "Listening on TCP port %d (socket %d)\n", ci_tcp_port, tcp_sock);
-
-ci_multi_ip = ipa;                                      /* save ip */
-ci_multi_port = ipp;                                    /* save port */
 ci_multi_sock = multi_sock;                             /* save master socket */
 ci_tcp_sock = tcp_sock;
 strcpy (tptr, cptr);                                    /* copy port */
 uptr->filename = tptr;                                  /* save */
-uptr->flags = uptr->flags | UNIT_ATT;                   /* no more errors */
+uptr->flags = uptr->flags | UNIT_ATT;
 return SCPE_OK;
 }
 
@@ -1383,8 +1381,8 @@ t_stat ci_detach (UNIT *uptr)
 {
 if (!(uptr->flags & UNIT_ATT))                          /* attached? */
     return SCPE_OK;
-ci_close_sock (ci_multi_sock, 1);                       /* close master socket */
-ci_close_sock (ci_tcp_sock, 1);                         /* close master socket */
+sim_close_sock (ci_multi_sock);                         /* close master socket */
+sim_close_sock (ci_tcp_sock);                           /* close master socket */
 free (uptr->filename);                                  /* free port string */
 uptr->filename = NULL;
 uptr->flags = uptr->flags & ~UNIT_ATT;                  /* not attached */
@@ -1399,9 +1397,12 @@ fprintf (st, "node=%d", ci_node);
 return SCPE_OK;
 }
 
-t_stat ci_show_tcp (FILE *st, UNIT *uptr, int32 val, CONST void *desc)
+t_stat ci_show_group (FILE *st, UNIT *uptr, int32 val, CONST void *desc)
 {
-fprintf (st, "port=%d", ci_tcp_port);
+if (ci_group[0])
+    fprintf (st, "group=%s", ci_group);
+else
+    fprintf (st, "no group");
 return SCPE_OK;
 }
 
@@ -1421,16 +1422,18 @@ ci_node = newnode;
 return SCPE_OK;
 }
 
-t_stat ci_set_tcp (UNIT *uptr, int32 val, CONST char *cptr, void *desc)
+t_stat ci_set_group (UNIT *uptr, int32 val, CONST char *cptr, void *desc)
 {
-int32 r;
-uint32 newport;
+char host[CBUFSIZE], port[CBUFSIZE];
 
+if ((!cptr) || (!*cptr))
+    return SCPE_ARG;
 if (uptr->flags & UNIT_ATT)
     return SCPE_ALATT;
-newport = (uint32) get_uint (cptr, 10, 65535, &r);
-if (r != SCPE_OK)
-    return r;
-ci_tcp_port = newport;
+if (sim_parse_addr (cptr, host, sizeof(host), NULL, port, sizeof(port), NULL, NULL))
+    return SCPE_ARG;
+if (host[0] == '\0')
+    return SCPE_ARG;
+strncpy(ci_group, cptr, CBUFSIZE-1);
 return SCPE_OK;
 }

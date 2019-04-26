@@ -151,8 +151,8 @@ MTAB ci_mod[] = {
       NULL, &show_nexus },
     { MTAB_XTD|MTAB_VDV, 0, "NODE", "NODE",
       &ci_set_node, &ci_show_node },
-    { MTAB_XTD|MTAB_VDV, 0, "PORT", "PORT",
-      &ci_set_tcp, &ci_show_tcp },
+    { MTAB_XTD|MTAB_VDV, 0, "GROUP", "GROUP",
+      &ci_set_group, &ci_show_group },
     { 0 }
     };
 

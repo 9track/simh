@@ -851,11 +851,16 @@ if (parse_status)
 if (r)
     return newsock;
 
+if (opt_flags & SIM_SOCK_OPT_MULTICAST)
+    opt_flags |= SIM_SOCK_OPT_DATAGRAM;                 /* must be datagram */
+
 memset(&hints, 0, sizeof(hints));
 hints.ai_flags = AI_PASSIVE;
+if (opt_flags & SIM_SOCK_OPT_MULTICAST)
+    hints.ai_flags |= AI_NUMERICHOST;
 hints.ai_family = AF_UNSPEC;
-hints.ai_protocol = ((opt_flags & SIM_SOCK_OPT_MULTICAST) ? IPPROTO_UDP : IPPROTO_TCP);
-hints.ai_socktype = ((opt_flags & SIM_SOCK_OPT_MULTICAST) ? SOCK_DGRAM : SOCK_STREAM);
+hints.ai_protocol = ((opt_flags & SIM_SOCK_OPT_DATAGRAM) ? IPPROTO_UDP : IPPROTO_TCP);
+hints.ai_socktype = ((opt_flags & SIM_SOCK_OPT_DATAGRAM) ? SOCK_DGRAM : SOCK_STREAM);
 if (p_getaddrinfo(host[0] ? host : NULL, port[0] ? port : NULL, &hints, &result)) {
     if (parse_status)
         *parse_status = -1;
@@ -875,7 +880,7 @@ if (preferred == NULL)
     preferred = result;
 #endif
 retry:
-newsock = sim_create_sock (preferred->ai_family, 0);    /* create socket */
+newsock = sim_create_sock (preferred->ai_family, opt_flags); /* create socket */
 if (newsock == INVALID_SOCKET) {                        /* socket error? */
 #ifndef IPV6_V6ONLY
     if (preferred->ai_next) {
@@ -903,14 +908,6 @@ if (opt_flags & SIM_SOCK_OPT_REUSEADDR) {
 
     sta = setsockopt (newsock, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));
     }
-if (opt_flags & SIM_SOCK_OPT_MULTICAST) {
-    int on = 1;
-
-    if (preferred->ai_family == AF_INET6)
-        sta = setsockopt (newsock, IPPROTO_IPV6, IPV6_JOIN_GROUP, (char *)&on, sizeof(on));
-    else
-        sta = setsockopt (newsock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&on, sizeof(on));
-    }
 #if defined (SO_EXCLUSIVEADDRUSE)
 else {
     int on = 1;
@@ -919,17 +916,42 @@ else {
     }
 #endif
 sta = bind (newsock, preferred->ai_addr, preferred->ai_addrlen);
-p_freeaddrinfo(result);
-if (sta == SOCKET_ERROR)                                /* bind error? */
+if (sta == SOCKET_ERROR) {                              /* bind error? */
+    p_freeaddrinfo(result);
     return sim_err_sock (newsock, "bind");
+    }
+if (opt_flags & SIM_SOCK_OPT_MULTICAST) {
+    if (preferred->ai_family == AF_INET6) {
+        struct ipv6_mreq mreq;
+
+        memcpy (&mreq.ipv6mr_multiaddr, &((struct sockaddr_in6 *)
+	        preferred->ai_addr)->sin6_addr,  sizeof(struct in6_addr));
+        mreq.ipv6mr_interface = 0;                      /* let system choose i/f */
+
+        sta = setsockopt (newsock, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq, sizeof(mreq));
+        }
+    else {
+        struct ip_mreq mreq;
+
+        mreq.imr_multiaddr = ((struct sockaddr_in *) preferred->ai_addr)->sin_addr;
+        mreq.imr_interface.s_addr = 0;                  /* let system choose i/f */
+
+        sta = setsockopt (newsock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+        }
+    if (sta == SOCKET_ERROR)                            /* mreq error? */
+        return sim_err_sock (newsock, "mreq");
+    }
+p_freeaddrinfo(result);
 if (!(opt_flags & SIM_SOCK_OPT_BLOCKING)) {
     sta = sim_setnonblock (newsock);                    /* set nonblocking */
     if (sta == SOCKET_ERROR)                            /* fcntl error? */
         return sim_err_sock (newsock, "fcntl");
     }
-sta = listen (newsock, 1);                              /* listen on socket */
-if (sta == SOCKET_ERROR)                                /* listen error? */
-    return sim_err_sock (newsock, "listen");
+if (!(opt_flags & SIM_SOCK_OPT_DATAGRAM)) {
+    sta = listen (newsock, 1);                          /* listen on socket */
+    if (sta == SOCKET_ERROR)                            /* listen error? */
+        return sim_err_sock (newsock, "listen");
+    }
 return newsock;                                         /* got it! */
 }
 

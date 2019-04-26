@@ -1188,7 +1188,6 @@ uint32  ipa, ipp;
 t_stat r;
 CI_ITEM *item;
 char *src_addr;
-char host[CBUFSIZE];
 
 while ((ci_rx_queue.count > 0) && ci_can_receive ()) {  /* process receive queue */
     if (ci_rx_queue.loss > 0)
@@ -1218,16 +1217,15 @@ if (ci_state >= PORT_ENABLED) {                         /* Check multicast chann
             break;
         r = sim_read_sock_ex (ci_multi_sock, rcv_pkt.data, CI_MAXFR, &src_addr);
         if (r > 0) {
-            sim_parse_addr (src_addr, host, sizeof (host), NULL, NULL, 0, NULL, NULL);
-            free (src_addr);
             src_ci_port = rcv_pkt.data[HDR_SOURCE];
             dest_ci_port = rcv_pkt.data[PPD_PORT];
             if ((dest_ci_port == ci_node) && (src_ci_port != ci_node)) {
-                sprintf (ci_vcd[src_ci_port].host, "%s:%.5s", host, rcv_pkt.data[HDR_VCPORT]);
+                sprintf (ci_vcd[src_ci_port].host, "[%s]:%.5s", src_addr, &rcv_pkt.data[HDR_VCPORT]);
                 ci_vcd[src_ci_port].pri = CI_GET16 (rcv_pkt.data, HDR_PRIORITY);
                 rcv_pkt.length = CI_GET16 (rcv_pkt.data, HDR_LENGTH);
                 ciq_insert (&ci_rx_queue, src_ci_port, &rcv_pkt);
                 }
+            free (src_addr);
             }
         if (r < 0) {
             sim_printf ("CI: multicast socket read error\n");
@@ -1322,15 +1320,17 @@ if (r != SCPE_OK)
 
 ciq_clear (&ci_tx_queue);
 for (i = 0; i < CI_MAX_NODES; i++) {
-    // TODO: should check for open virtual circuits and close them?
-    if (ci_vcd[i].socket != 0) {
+    if (ci_vcd[i].socket != 0) {                        /* close open VCs */
         sim_close_sock (ci_vcd[i].socket);
         ci_vcd[i].socket = 0;
+        }
+    if (ci_wait_sock != 0) {                            /* close pending VCs */
+        sim_close_sock (ci_wait_sock[i]);
+        ci_wait_sock[i] = 0;
         }
     ci_vcd[i].vcd_val = 0;                              /* clear VCD table */
     ci_vcd[i].host[0] = '\0';
     ci_vcd[i].state = VCST_CLOSED;
-    ci_wait_sock[i] = 0;
     }
 
 srand (time (NULL));

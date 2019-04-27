@@ -158,7 +158,7 @@ for ( ;; ) {
         length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD) + length;
         }
     pkt.length = length;
-    ci_read_packet (&pkt, CI_MAXFR);
+    ci_read_packet (&pkt, pkt.length);
     r = ci_route_ppd (&pkt);
     if (r != SCPE_OK)
         break;
@@ -368,9 +368,9 @@ while (total_data_len > 0) {
         data_len = total_data_len;
 
     if (pkt->data[PPD_OPC] == OPC_SNDDAT)
-        sim_debug (DBG_BLKTF, &ci_dev, "==>   SNDDAT, data_len: %d, time: %d\n", data_len, sim_grtime ());
+        sim_debug (DBG_BLKTF, &ci_dev, "==>   SNDDAT, data_len: %d\n", data_len);
     else
-        sim_debug (DBG_BLKTF, &ci_dev, "==>   RETDAT, data_len: %d, time: %d\n", data_len, sim_grtime ());
+        sim_debug (DBG_BLKTF, &ci_dev, "==>   RETDAT, data_len: %d\n", data_len);
 
     ci_readb (data_pte, data_len, page_offset + snd_offset, &pkt->data[CI_DATHDR]);
     CI_PUT32 (pkt->data, 0x18, total_data_len);         /* update packet */
@@ -449,6 +449,7 @@ void ci_read_packet (CI_PKT *pkt, size_t length)
 {
 int32 i;
 
+sim_debug (DBG_TRC, &ci_dev, "ci_read_packet:  addr: %08X, pkt->length: %d, length: %d\n", pkt->addr, pkt->length, length);
 for (i = PPD_SIZE; i < length; i++)                     /* skip the queue pointers */
     pkt->data[i] = GVP_Read (&ci_mmu, (pkt->addr + i), L_BYTE);
 }
@@ -459,6 +460,7 @@ void ci_write_packet (CI_PKT *pkt, size_t length)
 {
 int32 i;
 
+sim_debug (DBG_TRC, &ci_dev, "ci_write_packet: addr: %08X, pkt->length: %d, length: %d\n", pkt->addr, pkt->length, length);
 for (i = PPD_PORT; i < length; i++)                     /* don't overwrite the header */
     GVP_Write (&ci_mmu, (pkt->addr + i), pkt->data[i], L_BYTE);
 }

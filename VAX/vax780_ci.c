@@ -1,6 +1,6 @@
 /* vax780_ci.c: VAX 11/780 Computer Interconnect adapter
 
-   Copyright (c) 2017, Matt Burke
+   Copyright (c) 2017-2019, Matt Burke
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -88,11 +88,11 @@
 #define PCQ2CR_OF       0x910
 #define PCQ3CR_OF       0x914
 #define PSRCR_OF        0x918
-#define PECR_OF         0x91c
+#define PECR_OF         0x91C
 #define PDCR_OF         0x920
 #define PICR_OF         0x924
 #define PDFQCR_OF       0x928
-#define PMFQCR_OF       0x92c
+#define PMFQCR_OF       0x92C
 #define PMTCR_OF        0x930
 #define PMTECR_OF       0x934
 #define PFAR_OF         0x938
@@ -104,7 +104,7 @@
 #define RPORT_TYPE      0x80000002
 #define CODE_REV        0x00700040
 #define FUNC_MASK       0xFFFF0F00
-#define INT_BUF_LEN     0x3f9
+#define INT_BUF_LEN     0x3F9
 
 /* CI780 Port States */
 
@@ -117,8 +117,6 @@ uint32 ci_mdatr[8192];                                  /* maintenanace data reg
 uint32 ci_local_store[1024];
 
 extern uint32 nexus_req[NEXUS_HLVL];
-extern FILE *sim_log;
-extern FILE *sim_deb;
 
 t_stat ci_reset (DEVICE *dptr);
 t_stat ci_rdreg (int32 *val, int32 pa, int32 mode);
@@ -208,16 +206,6 @@ t_stat ci_rdreg (int32 *val, int32 pa, int32 lnt)
 int32 rg = (pa & 0xFFF);
 REGMAP *p;
 
-// The O/S reads from the adapter with a length of 2
-//
-//if ((pa & 3) || (lnt != L_LONG)) {                      /* unaligned or not lw? */
-//    printf (">>CI: invalid adapter read mask, pa = %X, lnt = %d\r\n", pa, lnt);
-//#if defined(VAX_780) || defined(VAX_860)
-//    sbi_set_errcnf ();                                  /* err confirmation */
-//#endif
-//    return SCPE_OK;
-//    }
-
 if ((rg >= 0x800) && (ci_state < PORT_UCODERUN)) {      /* microcode not running? */
     *val = ci_local_store[(rg - 0x800)];
     return SCPE_OK;
@@ -239,7 +227,7 @@ switch (rg) {                                           /* CI780 specific regist
             ci_pmcsr = ci_pmcsr & ~PMCSR_UI;
         else
             ci_pmcsr = ci_pmcsr | PMCSR_UI;
-        *val = (ci_pmcsr & 0xFFFE);					    /* TODO: Need defined mask */
+        *val = (ci_pmcsr & 0xFFFE);                     /* TODO: Need defined mask */
         sim_debug (DBG_REG, &ci_dev, "PMCSR rd: %08x\n", *val);
         break;
 
@@ -268,13 +256,6 @@ t_stat r;
 UNIT *uptr = &ci_unit;
 REGMAP *p;
 
-if ((pa & 3) || (lnt != L_LONG)) {                      /* unaligned or not lw? */
-    printf (">>CI: invalid adapter write mask, pa = %X, lnt = %d\r\n", pa, lnt);
-#if defined(VAX_780) || defined(VAX_860)
-    sbi_set_errcnf ();                                  /* err confirmation */
-#endif
-    return SCPE_OK;
-    }
 if ((rg >= 0x800) && (ci_state < PORT_UCODERUN)) {      /* microcode not running? */
     ci_local_store[(rg - 0x800)] = val;
     return SCPE_OK;
@@ -294,11 +275,9 @@ switch (rg) {                                           /* case on type */
     case PMCSR_OF1:
         sim_debug (DBG_REG, &ci_dev, "PMCSR wr: %08X\n", val);
         if (val & PMCSR_MI) {                           /* Maintenance Initialise */
-//            ci_set_state (PORT_UNINIT);                 /* Now uninitialised */
             ci_reset (&ci_dev);
-//            ci_pmcsr = PMCSR_UI;
             break;
-        }
+            }
         ci_pmcsr &= ~(val & PMCSR_W1C);                 /* Clear W1C bits */
         ci_pmcsr = (ci_pmcsr & ~PMCSR_RW) | (val & PMCSR_RW); /* Set RW bits */
 
@@ -331,7 +310,7 @@ switch (rg) {                                           /* case on type */
 
     default:
         sim_debug (DBG_WRN, &ci_dev, "defaulting on write: %X\n", rg);
-}
+        }
 return SCPE_OK;
 }
 
@@ -358,7 +337,6 @@ int32 i;
 t_stat r;
 
 ci_cnfgr = CNFGR_CODE;
-//ci_pmcsr = (PMCSR_UI | PMCSR_MIF | PMCSR_MIE);
 ci_pmcsr = PMCSR_UI;
 ci_madr = 0;
 for (i = 0; i < 8192; i++)

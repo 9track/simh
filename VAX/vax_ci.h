@@ -1,6 +1,6 @@
 /* vax_ci.h: Computer Interconnect adapter
 
-   Copyright (c) 2017, Matt Burke
+   Copyright (c) 2017-2019, Matt Burke
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -48,8 +48,8 @@
 
 /* Datastructure types */
 
-#define DYN_SCSDG       0x3B
-#define DYN_SCSMSG      0x3C
+#define DYN_SCSDG       0x3B                            /* SCS datagram */
+#define DYN_SCSMSG      0x3C                            /* SCS message */
 
 /* PPD Offsets */
 
@@ -152,11 +152,11 @@
 #define CI_MAX_NODES    16
 
 typedef struct {
-    uint32 type;
-    uint32 addr;
+    uint32 type;                                        /* adpater specific use */
+    uint32 addr;                                        /* associated memory address */
     size_t size;
-    size_t length;
-    uint8 data[CI_MAXFR];
+    size_t length;                                      /* packet length */
+    uint8 data[CI_MAXFR];                               /* packet data */
 } CI_PKT;
 
 extern uint32 ci_state;

@@ -1,6 +1,6 @@
 /* vax_ci.c: Computer Interconnect adapter
 
-   Copyright (c) 2017, Matt Burke
+   Copyright (c) 2017-2019, Matt Burke
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -99,7 +99,7 @@ const char* ppd_types[] = {                             /* PPD debug definitions
     "ACK",
     "SCSDG",
     "SCSMSG"
-};
+    };
 
 const char* scs_msg_types[] = {                         /* SCS message debug definitions */
     "Connect Request",
@@ -113,13 +113,13 @@ const char* scs_msg_types[] = {                         /* SCS message debug def
     "Credit Request",
     "Credit Response",
     "Application Sequenced Message"
-};
+    };
 
 const char* ci_path_names[] = {
     "AUTO",
     "A",
     "B"
-};
+    };
 
 /* Virtual Circuit Descriptor */
 
@@ -156,18 +156,11 @@ SOCKET ci_wait_sock[CI_MAX_NODES];                      /* pending connections *
 int32 ci_pri;                                           /* connection priority */
 uint32 ci_node;                                         /* local port number */
 uint32 ci_state;                                        /* port state */
-
 VCD ci_vcd[CI_MAX_NODES];                               /* VC descriptors */
 CI_QUE ci_rx_queue;                                     /* packet receive queue */
 CI_QUE ci_tx_queue;                                     /* packet transmit queue */
+CI_PKT rcv_pkt;                                         /* receive packet buffer */
 
-CI_PKT rcv_pkt;
-uint8 buffer[CI_MAXFR];
-uint8 net_blk_buf[CI_MAXFR];
-
-extern FILE *sim_log;
-extern FILE *sim_deb;
-extern int32 sim_switches;
 extern int32 tmxr_poll;
 
 t_stat ci_snddg (CI_PKT *pkt);
@@ -198,17 +191,14 @@ void ciq_clear  (CI_QUE *que);                          /* clear FIFO queue */
 void ciq_remove (CI_QUE *que);                          /* remove item from FIFO queue */
 void ciq_insert (CI_QUE *que, uint8 port, CI_PKT *pkt); /* insert item into FIFO queue */
 
+/* Adapter specific functions */
+
 extern t_stat ci_receive (CI_PKT *pkt);
 extern t_stat ci_respond (CI_PKT *pkt);
 extern t_stat ci_dispose (CI_PKT *pkt);
 extern t_stat ci_send_data (CI_PKT *pkt);
 extern t_stat ci_receive_data (CI_PKT *pkt);
 extern t_bool ci_can_receive ();
-
-//
-// TODO: Need generic read/write block functions in GVP code.
-//       i.e. ReadData, WriteData, ReadDataPTE and WriteDataPTE
-//
 
 /* CI port state change */
 

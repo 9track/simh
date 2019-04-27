@@ -1,6 +1,6 @@
 /* vax_shac.c: SHAC adapter
 
-   Copyright (c) 2017, Matt Burke
+   Copyright (c) 2017-2019, Matt Burke
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -34,6 +34,27 @@
 #define SSWCR_OF        0xC
 #define SSHMA_OF        0x11
 
+/* Standard Port Registers */
+
+#define PQBBR_OF        0x12
+#define PSR_OF          0x13
+#define PESR_OF         0x14
+#define PFAR_OF         0x15
+#define PPR_OF          0x16
+#define PMCSR_OF        0x17
+#define PCQ0CR_OF       0x20
+#define PCQ1CR_OF       0x21
+#define PCQ2CR_OF       0x22
+#define PCQ3CR_OF       0x23
+#define PDFQCR_OF       0x24
+#define PMFQCR_OF       0x25
+#define PSRCR_OF        0x26
+#define PECR_OF         0x27
+#define PDCR_OF         0x28
+#define PICR_OF         0x29
+#define PMTCR_OF        0x2A
+#define PMTECR_OF       0x2B
+
 /* SHAC Port Parameters */
 
 #define RPORT_TYPE      0x80000022
@@ -43,11 +64,6 @@
 
 uint32 sh_shma;
 int32 shac_int = 0;
-
-extern FILE *sim_log;
-extern FILE *sim_deb;
-extern int32 sim_switches;
-extern int32 fault_PC;
 
 int32 shac_rd (int32 pa);
 void shac_wr (int32 pa, int32 val, int32 lnt);

@@ -1,6 +1,6 @@
 /* vax_ci_dec.c: Computer Interconnect adapter (DEC Common)
 
-   Copyright (c) 2018, Matt Burke
+   Copyright (c) 2019, Matt Burke
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),

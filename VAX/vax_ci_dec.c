@@ -105,6 +105,11 @@
 #define BD_NEXT_OF      0xc                             /* next free buffer descriptor */
 #define BD_LEN          0x10                            /* buffer descriptor length */
 
+/* Block transfer constants */
+
+#define CI_DATHDR       0x2C
+#define CI_MAXDAT       (CI_MAXFR - CI_DATHDR)
+
 /* Macros */
 
 #define CI_ReadL(x)     GVP_ReadL (&ci_mmu, x)
@@ -128,6 +133,7 @@ void ci_write_packet (CI_PKT *pkt, size_t length);
 void ci_readb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
 void ci_writeb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
 void ci_read_pqb (uint32 pa);
+t_stat ci_receive_int (CI_PKT *pkt);
 
 t_stat ci_port_command (int32 queue)
 {
@@ -344,9 +350,6 @@ ci_mmu.glr = CI_ReadL (pa + PQB_GLR_OF);
 ci_mmu.glr = (ci_mmu.glr << 2);
 }
 
-#define CI_DATHDR       0x2C
-#define CI_MAXDAT       (CI_MAXFR - CI_DATHDR)
-
 t_stat ci_send_data (CI_PKT *pkt)
 {
 uint32 data_len, total_data_len;
@@ -369,8 +372,10 @@ while (total_data_len > 0) {
 
     if (pkt->data[PPD_OPC] == OPC_SNDDAT)
         sim_debug (DBG_BLKTF, &ci_dev, "==>   SNDDAT, data_len: %d\n", data_len);
-    else
+    else {
         sim_debug (DBG_BLKTF, &ci_dev, "==>   RETDAT, data_len: %d\n", data_len);
+        pkt->data[PPD_OPC] = OPC_RETDAT;
+        }
 
     ci_readb (data_pte, data_len, page_offset + snd_offset, &pkt->data[CI_DATHDR]);
     CI_PUT32 (pkt->data, 0x18, total_data_len);         /* update packet */
@@ -407,10 +412,14 @@ ci_writeb (data_pte, data_len, page_offset + rec_offset, &pkt->data[CI_DATHDR]);
 
 total_data_len -= data_len;
 
-if ((total_data_len == 0) && (pkt->data[PPD_OPC] == OPC_SNDDAT)) {
-    pkt->data[PPD_OPC] = OPC_RETCNF;
+if (total_data_len == 0) {
     pkt->length = CI_DATHDR;
-    return ci_route_ppd (pkt);
+    if (pkt->data[PPD_OPC] == OPC_SNDDATREC) {
+        pkt->data[PPD_OPC] = OPC_RETCNF;
+        return ci_route_ppd (pkt);
+        }
+    else                                                /* DATREC */
+        return ci_receive_int (pkt);                    /* pass to system */
     }
 return SCPE_OK;
 }
@@ -439,7 +448,7 @@ CI_PUT32 (pkt->data, 0x20, 0xFFFF0F00);                 /* function mask */
 pkt->data[0x24] = 0x0;                                  /* resetting port */
 // TODO: should also respond when disabled?
 pkt->data[0x25] = 0x4;                                  /* port state (maint = 0, state = enabled) */
-pkt->length = 0x26;
+pkt->length = 0x26;  // TODO: check length, add #define
 return ci_route_ppd (pkt);
 }
 
@@ -504,7 +513,7 @@ if ((offset | bc) & 03) {                               /* check alignment */
     for (i = offset; i < (offset + bc); i++, buf++) {   /* by bytes */
         pte_va = pte_ba + ((i >> 7) & ~0x3);
         pte = GVP_Read (&ci_mmu, pte_va, L_LONG);
-        pa = ((pte & 0x1fffff) << 9) | VA_GETOFF(i);
+        pa = ((pte & 0x1fffff) << 9) | VA_GETOFF(i);  // TODO: Check that 0x1fffff is correct
         WriteB (pa, *buf);
         }
     }
@@ -601,11 +610,27 @@ if (pkt->addr != 0) {
 return SCPE_IERR;
 }
 
+/* New incoming packet received (internal version) */
+
+t_stat ci_receive_int (CI_PKT *pkt)
+{
+t_stat r;
+if (pkt->addr == 0) {
+    if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
+        r = ci_get_mfq (pkt);
+    else
+        r = ci_get_dfq (pkt);
+    if (r != SCPE_OK)
+        return r;
+    }
+ci_write_packet (pkt, pkt->length);
+return ci_put_rsq (pkt);
+}
+
 /* New incoming packet received */
 
 t_stat ci_receive (CI_PKT *pkt)
 {
-t_stat r;
 switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
     case OPC_REQDATREC:
         return ci_send_data (pkt);
@@ -617,16 +642,7 @@ switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by po
     case OPC_REQREC:
         return ci_request_id (pkt);
         }
-if (pkt->addr == 0) {
-    if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
-        r = ci_get_mfq (pkt);
-    else
-        r = ci_get_dfq (pkt);
-    if (r != SCPE_OK)
-        return r;
-    }
-ci_write_packet (pkt, pkt->length);
-return ci_put_rsq (pkt);
+return ci_receive_int (pkt);
 }
 
 t_bool ci_can_receive ()

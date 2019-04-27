@@ -178,6 +178,7 @@ t_stat ci_retid (CI_PKT *pkt);
 t_stat ci_sndlb (CI_PKT *pkt);
 t_stat ci_snddat (CI_PKT *pkt);
 t_stat ci_retdat (CI_PKT *pkt);
+t_stat ci_retcnf (CI_PKT *pkt);
 t_stat ci_invtc (CI_PKT *pkt);
 t_stat ci_setckt (CI_PKT *pkt);
 t_stat ci_rdcnt (CI_PKT *pkt);
@@ -244,6 +245,9 @@ switch (opcode) {
 
     case OPC_SNDMSG:
         return ci_sndmsg (pkt);
+
+    case OPC_RETCNF:
+        return ci_retcnf (pkt);
 
     case OPC_REQID:
         return ci_reqid (pkt);
@@ -636,6 +640,15 @@ if (pkt->data[PPD_FLAGS] & PPD_RSP) {                   /* response requested? *
 else
     r = ci_dispose (pkt);                               /* dispose of packet */
 return r;
+}
+
+t_stat ci_retcnf (CI_PKT *pkt)
+{
+uint32 port = pkt->data[PPD_PORT];
+uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+sim_debug (DBG_BLKTF, &ci_dev, "==> RETCNF, dest: %d, path: %s\n", port, ci_path_names[path]);
+
+return ci_send_packet (pkt, pkt->length);
 }
 
 t_stat ci_invtc (CI_PKT *pkt)

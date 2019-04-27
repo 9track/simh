@@ -375,8 +375,8 @@ REG ci_reg[] = {
 MTAB ci_mod[] = {
     { MTAB_XTD|MTAB_VDV, 0, "NODE", "NODE",
       &ci_set_node, &ci_show_node },
-    { MTAB_XTD|MTAB_VDV, 0, "PORT", "PORT",
-      &ci_set_tcp, &ci_show_tcp },
+    { MTAB_XTD|MTAB_VDV, 0, "GROUP", "GROUP",
+      &ci_set_group, &ci_show_group },
     { MTAB_XTD|MTAB_VDV|MTAB_VALR, 004, "ADDRESS", "ADDRESS",
       &set_addr, &show_addr, NULL, "Bus address" },
     { MTAB_XTD|MTAB_VDV|MTAB_VALR, 0, "VECTOR", "VECTOR",

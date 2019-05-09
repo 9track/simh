@@ -383,7 +383,7 @@ t_stat ci_sndmsg (CI_PKT *pkt)
 {
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE);
+uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE) & 0x7FFF;
 uint16 msg_type;
 t_stat r;
 
@@ -395,6 +395,7 @@ switch (dg_type) {
         // The following code may be related to the VC failure mechanism.
         // Maybe put this in ci_send_packet when VC is not open?
         //
+        sim_debug (DBG_PPDDG, &ci_dev, "<== SNDMSG - START, No Path\n");
         pkt->data[PPD_STATUS] = 0xA1;                   /* Status: No Path */
         ci_respond (pkt);
         return SCPE_OK;

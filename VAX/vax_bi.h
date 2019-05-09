@@ -58,7 +58,8 @@
 #define DTYPE_MS820     0x0001                          /* MS820 MOS Memory */
 #define DTYPE_DWBUA     0x0102                          /* DWBUA Unibus Adapter */
 #define DTYPE_KA820     0x0105                          /* KA820 CPU */
-#define DTYPE_CIBCA     0x0105                          /* CI Adapter */
+#define DTYPE_CIBCA     0x0108                          /* CI Adapter */
+#define DTYPE_CIBCI     0x010B                          /* CI Adapter */
 #define DTYPE_KDB50     0x010E                          /* Disk Adapter */
 #define DTYPE_DEBNA     0x410F                          /* Ethernet Adapter */
 

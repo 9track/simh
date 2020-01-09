@@ -102,6 +102,7 @@
 #define CF_MSC          0x0040                          /* enb misc msgs */
 #define CF_OTH          0x0020                          /* enb othr host msgs */                
 #define CF_THS          0x0010                          /* enb this host msgs */
+#define CF_MLH          0x0004                          /* multihost support */
 #define CF_MSK          (CF_ATN|CF_MSC|CF_OTH|CF_THS)
 
 /* Unit flags */

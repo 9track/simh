@@ -918,10 +918,18 @@ while (ci_can_enq (&ci_dsp)) {
         break;
         }
     pkt.length = pkt.size;
+    pkt.port = ci_node;
     ci_fmt_send (&pkt);
     sim_debug (DBG_REG, &ci_dev, "Processing packet: type = %d\n", pkt.type);
-    if (pkt.type == 1)
+    if (pkt.type == 1) {
         r = ci_route_ppd (&pkt);
+        if (r == SCPE_OK) {
+            if (pkt->data[PPD_FLAGS] & PPD_RSP)         /* response requested? */
+                r = ci_respond (pkt);                   /* driver wants it back */
+            else
+                r = ci_dispose (pkt);                   /* dispose of packet */
+            }
+        }
     else
         r = ciqba_msg (&pkt);
     if (r != SCPE_OK) {

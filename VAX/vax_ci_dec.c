@@ -125,6 +125,8 @@ uint32 ci_pesr;                                         /* port error status */
 uint32 ci_ppr;                                          /* port parameter reg */
 GVPMMU ci_mmu;                                          /* memory management unit */
 
+extern int32 tmxr_poll;
+
 extern void ci_set_int (void);
 extern void ci_clr_int (void);
 
@@ -134,6 +136,10 @@ void ci_readb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
 void ci_writeb (uint32 pte_ba, int32 bc, int32 offset, uint8 *buf);
 void ci_read_pqb (uint32 pa);
 t_stat ci_receive_int (CI_PKT *pkt);
+t_stat ci_receive (CI_PKT *pkt);
+t_stat ci_send (CI_PKT *pkt);
+t_stat ci_respond (CI_PKT *pkt);
+t_stat ci_dispose (CI_PKT *pkt);
 
 t_stat ci_port_command (int32 queue)
 {
@@ -164,8 +170,15 @@ for ( ;; ) {
         length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD) + length;
         }
     pkt.length = length;
+    pkt.port = ci_unit.CI_NODE;
     ci_read_packet (&pkt, pkt.length);
-    r = ci_route_ppd (&pkt);
+    r = ci_send (&pkt);
+    if (r != SCPE_OK)
+        break;
+    if (pkt.data[PPD_FLAGS] & PPD_RSP)                  /* response requested? */
+        r = ci_respond (&pkt);                          /* driver wants it back */
+    else
+        r = ci_dispose (&pkt);                          /* dispose of packet */
     if (r != SCPE_OK)
         break;
     }
@@ -215,7 +228,7 @@ switch (rg) {
         break;
 
     case CI_PPR:
-        *val = ci_ppr | (ci_node & PPR_NODE);
+        *val = ci_ppr | (ci_unit.CI_NODE & PPR_NODE);
         sim_debug (DBG_REG, &ci_dev, "PPR rd: %08X\n", *val);
         break;
 
@@ -369,18 +382,13 @@ while (total_data_len > 0) {
         data_len = CI_MAXDAT;
     else
         data_len = total_data_len;
-
-    if (pkt->data[PPD_OPC] == OPC_SNDDAT)
-        sim_debug (DBG_BLKTF, &ci_dev, "==>   SNDDAT, data_len: %d\n", data_len);
-    else {
-        sim_debug (DBG_BLKTF, &ci_dev, "==>   RETDAT, data_len: %d\n", data_len);
+    if (pkt->data[PPD_OPC] == OPC_REQDATREC)
         pkt->data[PPD_OPC] = OPC_RETDAT;
-        }
-
     ci_readb (data_pte, data_len, page_offset + snd_offset, &pkt->data[CI_DATHDR]);
     CI_PUT32 (pkt->data, 0x18, total_data_len);         /* update packet */
     CI_PUT32 (pkt->data, 0x28, rec_offset);
-    r = ci_send_packet (pkt, data_len + CI_DATHDR);
+    pkt->length = data_len + CI_DATHDR;
+    r = ci_send_ppd (pkt);
     if (r != SCPE_OK)
         return r;
     total_data_len -= data_len;
@@ -416,7 +424,7 @@ if (total_data_len == 0) {
     pkt->length = CI_DATHDR;
     if (pkt->data[PPD_OPC] == OPC_SNDDATREC) {
         pkt->data[PPD_OPC] = OPC_RETCNF;
-        return ci_route_ppd (pkt);
+        return ci_send_ppd (pkt);
         }
     else                                                /* DATREC */
         return ci_receive_int (pkt);                    /* pass to system */
@@ -429,7 +437,7 @@ t_stat ci_request_id (CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 pkt->data[PPD_STATUS] = 0;                              /* status: OK */
 pkt->data[PPD_OPC] = OPC_RETID;                         /* set opcode */
-if (ci_check_vc (port)) {                               /* don't send ID once VC is open? */
+if (ci_check_vc (pkt->port, port)) {                    /* don't send ID once VC is open? */
     CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
     }
 else {
@@ -449,7 +457,7 @@ pkt->data[0x24] = 0x0;                                  /* resetting port */
 // TODO: should also respond when disabled?
 pkt->data[0x25] = 0x4;                                  /* port state (maint = 0, state = enabled) */
 pkt->length = 0x26;  // TODO: check length, add #define
-return ci_route_ppd (pkt);
+return ci_send_ppd (pkt);
 }
 
 /* Read a packet from memory */
@@ -645,9 +653,30 @@ switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by po
 return ci_receive_int (pkt);
 }
 
-t_bool ci_can_receive ()
+t_stat ci_send (CI_PKT *pkt)
 {
-return TRUE;
+switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
+    case OPC_SNDDAT:
+        return ci_send_data (pkt);
+        }
+return ci_send_ppd (pkt);
+}
+
+t_stat ci_dec_svc (UNIT *uptr)
+{
+t_stat r;
+CI_PKT pkt;
+
+do {
+    pkt.port = ci_unit.CI_NODE;
+    r = ci_receive_ppd (&pkt);
+    if (r == SCPE_OK)
+        r = ci_receive (&pkt);
+} while (r == SCPE_OK);
+// TODO: handle errors from ci_receive
+ci_svc (uptr);
+sim_clock_coschedule (uptr, tmxr_poll);
+return SCPE_OK;
 }
 
 /* Reset CI adapter */

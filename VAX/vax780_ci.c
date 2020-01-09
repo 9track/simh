@@ -133,7 +133,7 @@ void ci_clr_int (void);
 
 DIB ci_dib = { TR_CI, 0, &ci_rdreg, &ci_wrreg, 0, NVCL (CI) };
 
-UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
+UNIT ci_unit = { UDATA (&ci_dec_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
 
 REG ci_reg[] = {
     { HRDATA (CNFGR, ci_cnfgr, 32) },
@@ -334,7 +334,6 @@ return;
 t_stat ci_reset (DEVICE *dptr)
 {
 int32 i;
-t_stat r;
 
 ci_cnfgr = CNFGR_CODE;
 ci_pmcsr = PMCSR_UI;

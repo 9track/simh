@@ -40,6 +40,43 @@
 #define DBG_CONN        0x0100                          /* connections */
 #define DBG_TRC         0x0200                          /* trace */
 
+/* Unit Specific Data */
+
+#define CI_NODE         u3
+
+/* CI Port Types */
+
+#define CI_CI780        2                               /* SBI bus */
+#define CI_CI750        2                               /* CMI bus */
+#define CI_HSC          4                               /* HSC50/HSC70 */
+#define CI_KL10         6                               /* PDP10 */
+#define CI_BCA          11                              /* BI bus */
+#define CI_CIXCD        14                              /* XMI bus */
+#define CI_CITCA        17                              /* TC bus */
+#define CI_CIPCA        18                              /* PCI bus */
+#define CI_SHAC         34
+#define CI_RF70         48                              /* DSSI disks */
+#define CI_RF71         48
+#define CI_RF30         49
+#define CI_RF31         50
+#define CI_RF72         51
+#define CI_RF32         52
+#define CI_RF73         53
+#define CI_RF31F        54
+#define CI_RF35         55
+#define CI_RF36         58
+#define CI_RF37         59
+#define CI_RF74         60
+#define CI_RF75         61
+#define CI_TF70         64                              /* DSSI tapes */
+#define CI_TF30         65
+#define CI_TF85         65
+#define CI_TF86         66
+#define CI_HSJ          80
+#define CI_HSD          81
+
+#define CI_DUALPATH     0x80000000
+
 /* Port States */
 
 #define PORT_UNINIT     0                               /* Uninitialised */
@@ -62,12 +99,67 @@
 #define PPD_STATUS      0x0D                            /* status */
 #define PPD_OPC         0x0E                            /* opcode */
 #define PPD_FLAGS       0x0F                            /* flags */
+
 #define PPD_LENGTH      0x10                            /* message length */
 #define PPD_MTYPE       0x12                            /* message type */
 #define PPD_STYPE       0x14                            /* SCS message type */
+
 #define PPD_VCMMSK      0x10                            /* VCD modify mask */
 #define PPD_VCMVAL      0x14                            /* VCD modify value */
 #define PPD_VCPVAL      0x18                            /* VCD previous value */
+
+#define PPD_SYSID       0x14                            /* sending system ID */
+#define PPD_PROTO       0x1A                            /* protocol revision */
+#define  PPD_BASE       0                               /* 1st rev */
+#define  PPD_ELOG       1                               /* 2nd rev, supports ELOG */
+#define PPD_MAXDG       0x1C                            /* max datagram size */
+#define PPD_MAXMSG      0x1E                            /* max message size */
+#define PPD_SWTYPE      0x20                            /* software type */
+#define PPD_SWVER       0x24                            /* software version */
+#define PPD_SWIN        0x28                            /* software incarnation */
+#define PPD_HWTYPE      0x30                            /* hardware type */
+#define PPD_HWVER       0x34                            /* hardware version */
+#define PPD_NODE        0x40                            /* node name */
+#define PPD_TIME        0x48                            /* current time */
+
+/* SCS Offsets */
+
+#define SCS_LENGTH      0x10                            /* message length */
+#define SCS_MTYPE       0x14                            /* message type */
+#define SCS_CREDIT      0x16                            /* credit extension */
+#define SCS_DSTCON      0x18                            /* destination connection ID */
+#define SCS_SRCCON      0x1C                            /* source connection ID */
+#define SCS_APPL        0x20                            /* application message */
+#define SCS_MINCR       0x20                            /* mininum send credit */
+#define SCS_STATUS      0x22                            /* status */
+#define SCS_DSTPROC     0x24                            /* destination process */
+#define SCS_SRCPROC     0x34                            /* source process */
+#define SCS_CONDAT      0x44                            /* connection data */
+
+/* SCS Message Types */
+
+#define SCS_CONREQ      0x00                            /* connect request */
+#define SCS_CONRSP      0x01                            /* connect response */
+#define SCS_ACCREQ      0x02                            /* accept request */
+#define SCS_ACCRSP      0x03                            /* accept respone */
+#define SCS_REJREQ      0x04                            /* reject request */
+#define SCS_REJRSP      0x05                            /* reject respone */
+#define SCS_DISREQ      0x06                            /* disconnect request */
+#define SCS_DISRSP      0x07                            /* disconnect response */
+#define SCS_CRREQ       0x08                            /* credit request */
+#define SCS_CRRSP       0x09                            /* credit response */
+#define SCS_APPMSG      0x0A                            /* application message */
+#define SCS_APPDG       0x0B                            /* application datagram */
+
+/* SCS Status Codes */
+
+#define SCS_STNORM      0x01                            /* success */
+#define SCS_STNOMAT     0x0A                            /* no matching listener */
+#define SCS_STNORS      0x12                            /* no resources */
+#define SCS_STDISC      0x19                            /* disconnected */
+#define SCS_STNOCR      0x21                            /* insufficient credit */
+#define SCS_BALANCE     0x29                            /* load balance disconnect */
+#define SCS_UAP         0x2A                            /* use alternate port */
 
 /* PPD Sizes */
 
@@ -106,6 +198,8 @@
 #define OPC_MSGREC      (OPC_M_RECV | OPC_SNDMSG)       /* message received */
 #define OPC_CNFREC      (OPC_M_RECV | OPC_RETCNF)       /* confirm received */
 #define OPC_REQREC      (OPC_M_RECV | OPC_REQID)        /* request ID recevied */
+#define OPC_RSTREC      (OPC_M_RECV | OPC_SNDRST)       /* reset received */
+#define OPC_STRTREC     (OPC_M_RECV | OPC_SNDSTRT)      /* start received */
 #define OPC_REQDATREC   (OPC_M_RECV | OPC_REQDAT)       /* request data received */
 #define OPC_MCNFREC     0x29                            /* maintenance confirm received */
 #define OPC_IDREC       (OPC_M_RECV | OPC_RETID)        /* ID received */
@@ -113,6 +207,18 @@
 #define OPC_SNDDATREC   (OPC_M_RECV | OPC_SNDDAT)       /* send data received */
 #define OPC_DATREC      (OPC_M_RECV | OPC_RETDAT)       /* data recieved */
 #define OPC_MDATREC     0x33                            /* maintenance data recieved */
+
+/* Datagram and Message Types */
+
+#define DG_START        0                               /* start */
+#define DG_STACK        1                               /* start acknowledge */
+#define DG_ACK          2                               /* acknowledge */
+#define DG_SCSDG        3                               /* SCS datagram */
+#define DG_SCSMSG       4                               /* SCS message */
+#define DG_ELOG         5                               /* error log */
+#define DG_HOSTSHUT     6                               /* host shutdown */
+#define DG_FUDG         7                               /* firmware update datagram */
+#define DG_CCLR         0x8000                          /* cache clear */
 
 /* PPD Flags */
 
@@ -154,22 +260,21 @@
 typedef struct {
     uint32 type;                                        /* adpater specific use */
     uint32 addr;                                        /* associated memory address */
+    uint32 port;                                        /* source/dest port */
     size_t size;
     size_t length;                                      /* packet length */
     uint8 data[CI_MAXFR];                               /* packet data */
 } CI_PKT;
 
 extern uint32 ci_state;
-extern uint32 ci_node;
 extern DEVICE ci_dev;
 
 void ci_set_state (uint32 state);
-t_stat ci_route_ppd (CI_PKT *pkt);
-t_stat ci_send_packet (CI_PKT *pkt, size_t length);
-t_stat ci_receive_packet (CI_PKT *pkt, uint8 port);
+t_stat ci_send_ppd (CI_PKT *pkt);
+t_stat ci_receive_ppd (CI_PKT *pkt);
 t_stat ci_open_vc (uint8 port);
 t_stat ci_close_vc (uint8 port);
-t_bool ci_check_vc (uint8 port);
+t_bool ci_check_vc (uint8 lport, uint8 rport);
 t_stat ci_show_node (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
 t_stat ci_set_node (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat ci_show_group (FILE *st, UNIT *uptr, int32 val, CONST void *desc);

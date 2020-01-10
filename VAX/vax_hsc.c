@@ -81,7 +81,7 @@ SYSAP hsc_sysap[] = {
     { 0 }
     };
 
-UNIT hsc_unit = { UDATA (&hsc_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
+UNIT hsc_unit = { UDATA (&hsc_svc, UNIT_IDLE, 0) };
 
 REG hsc_reg[] = {
     { NULL }
@@ -113,7 +113,7 @@ DEVICE hsc_dev = {
     "HSC", &hsc_unit, hsc_reg, hsc_mod,
     1, 0, 0, 0, 0, 0,
     NULL, NULL, &hsc_reset,
-    NULL, &ci_attach, &ci_detach,
+    NULL, NULL, NULL,
     NULL, DEV_DEBUG | DEV_DISABLE | DEV_DIS, 0,
     hsc_debug, 0, 0
     };
@@ -205,7 +205,7 @@ t_stat hsc_mscp_done (MSC *cp, uint16 rf_pkt)
 CONN *conn = hsc_getconn (cp->cid);
 CI_PKT pkt;
 
-pkt.port = conn->port;
+pkt.port = hsc_unit.CI_NODE;                            /* source port */
 pkt.length = (SCS_APPL + cp->pak[rf_pkt].d[UQ_HLNT]);
 pkt.data[PPD_PORT] = conn->port;                        /* dest port */
 pkt.data[PPD_STATUS] = 0;                               /* status */
@@ -429,12 +429,12 @@ t_stat hsc_reqrec (CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 pkt->data[PPD_STATUS] = 0;                              /* status: OK */
 pkt->data[PPD_OPC] = OPC_RETID;                         /* set opcode */
-if (ci_check_vc (pkt->port, port)) {                    /* don't send ID once VC is open? */
-    CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
-    }
-else {
+//if (ci_check_vc (pkt->port, port)) {                    /* don't send ID once VC is open? */
+//    CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
+//    }
+//else {
     CI_PUT32 (pkt->data, 0x10, 0);                      /* transaction ID low (MBZ to trigger START) */
-    }
+//    }
 CI_PUT32 (pkt->data, 0x14, 0);                          /* transaction ID high (MBZ to trigger START) */
 CI_PUT32 (pkt->data, 0x18, (CI_DUALPATH | CI_HSC));     /* remote port type */
 CI_PUT32 (pkt->data, 0x1C, 0x03060D22);                 /* code revision */

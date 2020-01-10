@@ -115,6 +115,8 @@
 #define CI_ReadL(x)     GVP_ReadL (&ci_mmu, x)
 
 uint32 ci_psr;                                          /* port status reg */
+uint32 ci_max_dg;                                       /* max datagram size */
+uint32 ci_max_msg;                                      /* max message size */
 uint32 ci_pqbb_pa;                                      /* port queue base pa */
 uint32 ci_pqbb_va;                                      /* port queue base va */
 uint32 ci_bdt_va;                                       /* buffer descriptor table va */
@@ -158,14 +160,14 @@ for ( ;; ) {
 
     if (ent_addr & 0x3)
         sim_printf ("CI: command queue packet not LW aligned\n");
-    
+
     pkt.addr = ent_addr;
     length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD);
-    if (length == 0) {
-        sim_printf ("CI: zero length packet\n");
-        break;
-        }
-    if (length < 0) {
+    if (length == PPD_DG)                               /* type is dg? */
+        length = ci_max_dg;                             /* use max size */
+    else if (length == PPD_MSG)                         /* type is msg? */
+        length = ci_max_msg;                            /* use max size */
+    else if (length < 0) {
         ent_addr = ent_addr + length;                   /* offset to network header */
         length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD) + length;
         }
@@ -349,8 +351,8 @@ return SCPE_OK;
 
 void ci_read_pqb (uint32 pa)
 {
-//ci_dg_size = CI_ReadL (pa + PQB_DFQL_OF);               /* packet sizes */
-//ci_msg_size = CI_ReadL (pa + PQB_DFML_OF);
+ci_max_dg = CI_ReadL (pa + PQB_DFQL_OF);                /* packet sizes */
+ci_max_msg = CI_ReadL (pa + PQB_DFML_OF);
 ci_pqbb_va = CI_ReadL (pa + PQB_PQBBVA_OF);
 ci_bdt_va = CI_ReadL (pa + PQB_BDTVA_OF);               /* buffer descriptors */
 ci_bdt_len = CI_ReadL (pa + PQB_BDTLEN_OF);
@@ -639,7 +641,14 @@ return ci_put_rsq (pkt);
 
 t_stat ci_receive (CI_PKT *pkt)
 {
+uint32 port = pkt->data[PPD_PORT];
+
 switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
+    case OPC_IDREC:
+        if (ci_check_vc (pkt->port, port))              /* VC open? */
+            return SCPE_OK;                             /* discard */
+        break;
+
     case OPC_REQDATREC:
         return ci_send_data (pkt);
 

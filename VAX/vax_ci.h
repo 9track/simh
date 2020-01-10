@@ -93,6 +93,8 @@
 #define PPD_FLINK       0x00                            /* forward link */
 #define PPD_BLINK       0x04                            /* backward link */
 #define PPD_SIZE        0x08                            /* structure size */
+#define  PPD_DG         0                               /* datagram */
+#define  PPD_MSG        1                               /* message */
 #define PPD_TYPE        0x0A                            /* structure type */
 #define PPD_SWFLAG      0x0B                            /* software flags */
 #define PPD_PORT        0x0C                            /* src/dest port */

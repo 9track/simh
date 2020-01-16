@@ -197,6 +197,14 @@ extern int32 MMR2;
 #define RF_TIMER        (RF_NUMDR)
 #define RF_QUEUE        (RF_TIMER + 1)
 
+#define RW_BNL          (RW_BD0L)                       /* buff name */
+#define RW_BNH          (RW_BD0H)
+#define RW_BOL          (RW_BD1L)                       /* byte offset */
+#define RW_BOH          (RW_BD1H)
+#define RW_CNL          (RW_BD2L)                       /* conn id */
+#define RW_CNH          (RW_BD2H)
+
+
 /* Internal packet management.  The real RQDX3 manages its packets as true
    linked lists.  However, use of actual addresses in structures won't work
    with save/restore.  Accordingly, the packets are an arrayed structure,
@@ -1693,14 +1701,16 @@ if ((uptr = rf_getucb (cp, lu))) {                      /* unit exist? */
     sts = rf_rw_valid (cp, pkt, uptr, cmd);             /* validity checks */
     if (sts == 0) {                                     /* ok? */
         uptr->cpkt = pkt;                               /* op in progress */
-        cp->pak[pkt].d[RW_WBAL] = cp->pak[pkt].d[RW_BAL];
-        cp->pak[pkt].d[RW_WBAH] = cp->pak[pkt].d[RW_BAH];
+        cp->pak[pkt].d[RW_WBD0L] = cp->pak[pkt].d[RW_BD0L];
+        cp->pak[pkt].d[RW_WBD0H] = cp->pak[pkt].d[RW_BD0H];
+        cp->pak[pkt].d[RW_WBD1L] = cp->pak[pkt].d[RW_BD1L];
+        cp->pak[pkt].d[RW_WBD1H] = cp->pak[pkt].d[RW_BD1H];
+        cp->pak[pkt].d[RW_WBD2L] = cp->pak[pkt].d[RW_BD2L];
+        cp->pak[pkt].d[RW_WBD2H] = cp->pak[pkt].d[RW_BD2H];
         cp->pak[pkt].d[RW_WBCL] = cp->pak[pkt].d[RW_BCL];
         cp->pak[pkt].d[RW_WBCH] = cp->pak[pkt].d[RW_BCH];
         cp->pak[pkt].d[RW_WBLL] = cp->pak[pkt].d[RW_LBNL];
         cp->pak[pkt].d[RW_WBLH] = cp->pak[pkt].d[RW_LBNH];
-        cp->pak[pkt].d[RW_WMPL] = cp->pak[pkt].d[RW_MAPL];
-        cp->pak[pkt].d[RW_WMPH] = cp->pak[pkt].d[RW_MAPH];
         uptr->iostarttime = sim_grtime();
         sim_activate (uptr, 0);                         /* activate */
         sim_debug (DBG_TRC, rf_devmap[cp->cnum], "rf_rw - started\n");
@@ -1767,9 +1777,11 @@ uptr->io_complete = 1;
 sim_activate_notbefore (uptr, uptr->iostarttime+rf_xtime);
 }
 
+// TODO: Need to update ba in rq version
+
 /* Read byte buffer from memory */
 
-int32 rf_readb (uint32 ba, int32 bc, uint32 ma, uint8 *buf)
+int32 rf_readb (uint32 *bd, int32 bc, uint8 *buf)
 {
 // REQDAT
 return 0;
@@ -1777,18 +1789,16 @@ return 0;
 
 /* Read word buffer from memory */
 
-int32 rf_readw (uint32 ba, int32 bc, uint32 ma, uint16 *buf)
+int32 rf_readw (uint32 *bd, int32 bc, uint16 *buf, UNIT *uptr)
 {
-// REQDAT
-return 0;
+return hsc_reqdat (bd, (uint8*)buf, bc, uptr);
 }
 
 /* Write word buffer to memory */
 
-int32 rf_writew (uint32 ba, int32 bc, uint32 ma, uint16 *buf)
+int32 rf_writew (uint32 *bd, int32 bc, uint16 *buf, UNIT *uptr)
 {
-// SNDDAT
-return 0;
+return hsc_snddat (bd, (uint8*)buf, bc, uptr);
 }
 
 /* Unit service for data transfer commands */
@@ -1796,18 +1806,24 @@ return 0;
 t_stat rf_svc (UNIT *uptr)
 {
 MSC *cp = rf_ctxmap[uptr->cnum];
-uint32 i, t, tbc, abc, wwc;
+uint32 i, tbc, abc, wwc;
+int32 t;
 uint32 err = 0;
 int32 pkt = uptr->cpkt;                                 /* get packet */
 uint32 cmd, ba, bc, bl, ma;
+uint32 bd[3];
 
 if ((cp == NULL) || (pkt == 0))                         /* what??? */
     return STOP_RQ;
 cmd = GETP (pkt, CMD_OPC, OPC);                         /* get cmd */
-ba = GETP32 (pkt, RW_WBAL);                             /* buf addr */
+//FIXME ba = GETP32 (pkt, RW_WBAL);                             /* buf addr */
 bc = GETP32 (pkt, RW_WBCL);                             /* byte count */
 bl = GETP32 (pkt, RW_WBLL);                             /* block addr */
-ma = GETP32 (pkt, RW_WMPL);                             /* block addr */
+//FIXME ma = GETP32 (pkt, RW_WMPL);                             /* block addr */
+
+bd[0] = GETP32 (pkt, RW_WBD0L);
+bd[1] = GETP32 (pkt, RW_WBD1L);
+bd[2] = GETP32 (pkt, RW_WBD2L);
 
 sim_debug (DBG_TRC, rf_devmap[cp->cnum], "rf_svc(%s,unit=%d, pkt=%d, cmd=%s, lbn=%0X, bc=%0x, phase=%s)\n",
            sim_uname (uptr), uptr->unit_plug, pkt, rf_cmdname[cp->pak[pkt].d[CMD_OPC]&0x3f], bl, bc,
@@ -1844,7 +1860,12 @@ if (!uptr->io_complete) { /* Top End (I/O Initiation) Processing */
         }
 
     else if (cmd == OP_WR) {                            /* write? */
-        t = rf_readw (ba, tbc, ma, (uint16 *)uptr->rfxb);/* fetch buffer */
+        t = rf_readw (bd, tbc, (uint16 *)uptr->rfxb, uptr);   /* fetch buffer */
+        if (t < 0) {
+            // TODO: Wait until reactivated
+            return SCPE_OK;
+            }
+        uptr->hwmark = (uint32)t;
         if ((abc = tbc - t)) {                          /* any xfer? */
             wwc = ((abc + (RF_NUMBY - 1)) & ~(RF_NUMBY - 1)) >> 1;
             for (i = (abc >> 1); i < wwc; i++)
@@ -1866,11 +1887,11 @@ else { /* Bottom End (After I/O processing) */
         }
 
     else if (cmd == OP_WR) {                            /* write? */
-        t = rf_readw (ba, tbc, ma, (uint16 *)uptr->rfxb);/* fetch buffer */
-        abc = tbc - t;                                  /* any xfer? */
-        if (t) {                                        /* nxm? */
+        abc = tbc - uptr->hwmark;                       /* any xfer? */
+        if (uptr->hwmark) {                             /* nxm? */
+            //FIXME: Already updated in readw?
             PUTP32 (pkt, RW_WBCL, bc - abc);            /* adj bc */
-            PUTP32 (pkt, RW_WBAL, ba + abc);            /* adj ba */
+//FIXME            PUTP32 (pkt, RW_WBAL, ba + abc);            /* adj ba */
             if (rf_hbe (cp, uptr))                      /* post err log */
                 rf_rw_end (cp, uptr, EF_LOG, ST_HST | SB_HST_NXM);  
             return SCPE_OK;                             /* end else wr */
@@ -1880,18 +1901,24 @@ else { /* Bottom End (After I/O processing) */
     else {
         sim_disk_data_trace(uptr, (uint8 *)uptr->rfxb, bl, tbc, "sim_disk_rdsect", DBG_DAT & rf_devmap[cp->cnum]->dctrl, DBG_REQ);
         if ((cmd == OP_RD) && !err) {                   /* read? */
-            if ((t = rf_writew (ba, tbc, ma, (uint16 *)uptr->rfxb))) {/* store, nxm? */
+            t = rf_writew (bd, tbc, (uint16 *)uptr->rfxb, uptr);
+            if (t < 0) {
+                uptr->io_complete = 1;
+                return SCPE_OK;
+                }
+            else if (t) {                               /* store, nxm? */
                 PUTP32 (pkt, RW_WBCL, bc - (tbc - t));  /* adj bc */
-                PUTP32 (pkt, RW_WBAL, ba + (tbc - t));  /* adj ba */
+//FIXME                PUTP32 (pkt, RW_WBAL, ba + (tbc - t));  /* adj ba */
                 if (rf_hbe (cp, uptr))                  /* post err log */
                     rf_rw_end (cp, uptr, EF_LOG, ST_HST | SB_HST_NXM);      
                 return SCPE_OK;
                 }
             }
         else if ((cmd == OP_CMP) && !err) {             /* compare? */
+#if 0
             uint8 dby, mby;
             for (i = 0; i < tbc; i++) {                 /* loop */
-                if (rf_readb (ba + i, 1, ma, &mby)) {   /* fetch, nxm? */
+                if (rf_readb (bd + i, 1, &mby)) {       /* fetch, nxm? */
                     PUTP32 (pkt, RW_WBCL, bc - i);      /* adj bc */
                     PUTP32 (pkt, RW_WBAL, bc - i);      /* adj ba */
                     if (rf_hbe (cp, uptr))              /* post err log */
@@ -1905,6 +1932,7 @@ else { /* Bottom End (After I/O processing) */
                     return SCPE_OK;                     /* exit */
                     }                                   /* end if */
                 }                                       /* end for */
+#endif
             }                                           /* end else if */
         }                                               /* end else read */
     }                                                   /* end else bottom end */
@@ -1915,10 +1943,10 @@ if (err != 0) {                                         /* error? */
     sim_disk_clearerr (uptr);
     return SCPE_IOERR;
     }
-ba = ba + tbc;                                          /* incr bus addr */
+//FIXME ba = ba + tbc;                                          /* incr bus addr */
 bc = bc - tbc;                                          /* decr byte cnt */
 bl = bl + ((tbc + (RF_NUMBY - 1)) / RF_NUMBY);          /* incr blk # */
-PUTP32 (pkt, RW_WBAL, ba);                              /* update pkt */
+//FIXME PUTP32 (pkt, RW_WBAL, ba);                              /* update pkt */
 PUTP32 (pkt, RW_WBCL, bc);
 PUTP32 (pkt, RW_WBLL, bl);
 if (bc)                                                 /* more? resched */
@@ -1941,14 +1969,16 @@ sim_debug (DBG_TRC, rf_devmap[cp->cnum], "rf_rw_end\n");
 
 uptr->cpkt = 0;                                         /* done */
 PUTP32 (pkt, RW_BCL, bc - wbc);                         /* bytes processed */
-cp->pak[pkt].d[RW_WBAL] = 0;                            /* clear temps */
-cp->pak[pkt].d[RW_WBAH] = 0;
+cp->pak[pkt].d[RW_WBD0L] = 0;                            /* clear temps */
+cp->pak[pkt].d[RW_WBD0H] = 0;
+cp->pak[pkt].d[RW_WBD1L] = 0;
+cp->pak[pkt].d[RW_WBD1H] = 0;
+cp->pak[pkt].d[RW_WBD2L] = 0;
+cp->pak[pkt].d[RW_WBD2H] = 0;
 cp->pak[pkt].d[RW_WBCL] = 0;
 cp->pak[pkt].d[RW_WBCH] = 0;
 cp->pak[pkt].d[RW_WBLL] = 0;
 cp->pak[pkt].d[RW_WBLH] = 0;
-cp->pak[pkt].d[RW_WMPL] = 0;
-cp->pak[pkt].d[RW_WMPH] = 0;
 rf_putr (cp, pkt, cmd | OP_END, flg, sts, RW_LNT_D, UQ_TYP_SEQ); /* fill pkt */
 if (!rf_putpkt (cp, pkt, TRUE))                         /* send pkt */
     return ERR;

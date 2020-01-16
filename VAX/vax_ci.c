@@ -129,6 +129,7 @@ typedef struct {
     uint32    vcd_val[CI_MAX_NODES];                    /* VCD table */
     uint32    conn;                                     /* link state */
     uint32    state;                                    /* port state */
+    UNIT      *uptr;
 } CI_NODE;
 
 typedef struct {
@@ -349,47 +350,56 @@ return r;
 
 t_stat ci_receive_ppd (CI_PKT *pkt)
 {
-uint32 opcode;
+uint32 opcode, port, vcd_val;
 t_stat r;
 
-r = ci_receive_packet (pkt);
-if (r != SCPE_OK)
-    return r;
-opcode = pkt->data[PPD_OPC];
+for ( ;; ) {
+    r = ci_receive_packet (pkt);                        /* get next packet */
+    if (r != SCPE_OK)                                   /* none available? */
+        return r;                                       /* done */
+    opcode = pkt->data[PPD_OPC];
+    if (opcode == OPC_DGREC) {                          /* datagram? */
+        port = pkt->data[PPD_PORT];                     /* get remote port */
+        vcd_val = ci_nodes[pkt->port].vcd_val[port];
+        if (DG_INHIBIT(vcd_val))                        /* inhibited? */
+            continue;                                   /* try next packet */
+        }
+        break;                                          /* process packet */
+    }
 
 switch (opcode) {
 
-    case OPC_DGREC:
+    case OPC_DGREC:                                     /* datagram */
         return ci_dgrec (pkt);
 
-    case OPC_MSGREC:
+    case OPC_MSGREC:                                    /* message */
         return ci_msgrec (pkt);
 
-    case OPC_REQREC:
+    case OPC_REQREC:                                    /* ID request */
         return ci_reqrec (pkt);
 
-    case OPC_RSTREC:
+    case OPC_RSTREC:                                    /* port reset */
         return ci_rstrec (pkt);
 
-    case OPC_STRTREC:
+    case OPC_STRTREC:                                   /* port start */
         return ci_strtrec (pkt);
 
-    case OPC_REQDATREC:
+    case OPC_REQDATREC:                                 /* data requested */
         return ci_reqdatrec (pkt);
 
-    case OPC_IDREC:
+    case OPC_IDREC:                                     /* ID response */
         return ci_idrec (pkt);
 
-    case OPC_DATREC:
+    case OPC_DATREC:                                    /* data received */
         return ci_datrec (pkt);
 
-    case OPC_SNDDATREC:
+    case OPC_SNDDATREC:                                 /* data received */
         return ci_snddatrec (pkt);
 
-    case OPC_CNFREC:
+    case OPC_CNFREC:                                    /* confirmation */
         return ci_cnfrec (pkt);
 
-    case OPC_LBREC:
+    case OPC_LBREC:                                     /* loopback */
         return ci_lbrec (pkt);
 
     default:
@@ -531,6 +541,7 @@ switch (dg_type) {
         break;
         }
 
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
@@ -576,6 +587,7 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "==> REQDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_STATUS] = 0;                              /* Status OK */
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
@@ -653,6 +665,7 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "==> SNDDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_STATUS] = 0;                              /* status OK */
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
@@ -662,6 +675,7 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "==> RETDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_STATUS] = 0;                              /* status OK */
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
@@ -670,6 +684,7 @@ t_stat ci_retcnf (CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug (DBG_BLKTF, &ci_dev, "==> RETCNF, dest: %d, path: %s\n", port, ci_path_names[path]);
+pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
@@ -1129,12 +1144,14 @@ strncpy (&tpkt.data[HDR_VCPORT], ci_tcp_port, 5);       /* VC port */
 if (node->conn == LINK_LOCAL) {                         /* loopback? */
     sim_debug (DBG_CONN, &ci_dev, "packet destination is local node\n");
     ciq_insert (&ci_rx_queue, port, &tpkt);             /* add to queue */
+    sim_cancel (node->uptr);
+    sim_activate (node->uptr, 0);
     return SCPE_OK;
     }
 
 if ((LINK_OPEN (port)) && (opcode != OPC_REQID) && (opcode != OPC_RETID)) {
     if (ci_tx_queue.count == 0) {
-        r = sim_write_sock (node->socket, tpkt.data, CI_MAXFR); /* send packet */
+        r = sim_write_sock (node->socket, tpkt.data, tpkt.length); /* send packet */
         if (r < 0)
             ciq_insert (&ci_tx_queue, port, &tpkt);
         }
@@ -1190,8 +1207,11 @@ if (ci_rx_queue.count == 0) {                           /* receive queue empty? 
             do {
                 if (ci_rx_queue.count == CI_QUE_MAX)    /* queue full? */
                     break;                              /* yes, don't receive any more */
-                r = sim_read_sock (ci_nodes[i].socket, rcv_pkt.data, CI_MAXFR);
-                rcv_pkt.length = CI_GET16 (rcv_pkt.data, 0);
+                r = sim_read_sock (ci_nodes[i].socket, rcv_pkt.data, 2);
+                if (r > 0) {
+                    rcv_pkt.length = CI_GET16 (rcv_pkt.data, 0);
+                    r = sim_read_sock (ci_nodes[i].socket, &rcv_pkt.data[2], rcv_pkt.length - 2);
+                    }
                 dest_ci_port = rcv_pkt.data[PPD_PORT];
                 if (r > 0) ciq_insert (&ci_rx_queue, dest_ci_port, &rcv_pkt);
                 if (r < 0) {
@@ -1582,7 +1602,9 @@ if (r != SCPE_OK)
 if ((newnode > 15) || (newnode < 0))
     return SCPE_ARG;
 ci_nodes[uptr->CI_NODE].conn = LINK_CLOSED;
+ci_nodes[uptr->CI_NODE].uptr = NULL;
 ci_nodes[newnode].conn = LINK_LOCAL;
+ci_nodes[newnode].uptr = uptr;
 uptr->CI_NODE = newnode;
 return SCPE_OK;
 }

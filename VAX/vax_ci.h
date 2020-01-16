@@ -110,6 +110,13 @@
 #define PPD_VCMVAL      0x14                            /* VCD modify value */
 #define PPD_VCPVAL      0x18                            /* VCD previous value */
 
+#define PPD_XCTID       0x10                            /* transaction ID */
+#define PPD_XFRSZ       0x18                            /* transfer size */
+#define PPD_SBNAM       0x1C                            /* send buffer name */
+#define PPD_SBOFF       0x20                            /* send buffer offset */
+#define PPD_RBNAM       0x24                            /* receive buffer name */
+#define PPD_RBOFF       0x28                            /* receive buffer offset */
+
 #define PPD_SYSID       0x14                            /* sending system ID */
 #define PPD_PROTO       0x1A                            /* protocol revision */
 #define  PPD_BASE       0                               /* 1st rev */
@@ -258,6 +265,11 @@
 
 #define CI_MAXFR        1024                            /* max xfer */
 #define CI_MAX_NODES    16
+
+/* Block transfer constants */
+
+#define CI_DATHDR       (PPD_RBOFF + 4)
+#define CI_MAXDAT       (CI_MAXFR - CI_DATHDR)
 
 typedef struct {
     uint32 type;                                        /* adpater specific use */

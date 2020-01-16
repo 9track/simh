@@ -98,17 +98,16 @@
 
 /* Generic VAXport buffer descriptor */
 
-#define BD_OFF_OF       0x0                             /* byte offset into buffer page */
+#define BD_FLAGS_OF     0x0
+#define BD_M_OFF        0x1FF                           /* byte offset into buffer page */
+#define BD_M_AC         0x1000                          /* access mode check enabled */
+#define BD_M_ACMOD      0x6000                          /* access mode required */
+#define BD_M_VALID      0x8000                          /* valid entry */
 #define BD_KEY_OF       0x2                             /* sequence number */
 #define BD_SIZE_OF      0x4                             /* buffer size */
 #define BD_PTE_OF       0x8                             /* VA of buffer PTE */
-#define BD_NEXT_OF      0xc                             /* next free buffer descriptor */
+#define BD_NEXT_OF      0xC                             /* next free buffer descriptor */
 #define BD_LEN          0x10                            /* buffer descriptor length */
-
-/* Block transfer constants */
-
-#define CI_DATHDR       0x2C
-#define CI_MAXDAT       (CI_MAXFR - CI_DATHDR)
 
 /* Macros */
 
@@ -372,10 +371,10 @@ uint16 snd_name, page_offset;
 uint32 snd_offset, rec_offset, data_pte;
 t_stat r;
 
-total_data_len = CI_GET32 (pkt->data, 0x18);
-snd_name = CI_GET16 (pkt->data, 0x1C);                  /* Get BDT table offset */
-snd_offset = CI_GET32 (pkt->data, 0x20);                /* Get data starting offset */
-rec_offset = CI_GET32 (pkt->data, 0x28);                /* Get data starting offset */
+total_data_len = CI_GET32 (pkt->data, PPD_XFRSZ);
+snd_name = CI_GET16 (pkt->data, PPD_SBNAM);             /* Get BDT table offset */
+snd_offset = CI_GET32 (pkt->data, PPD_SBOFF);           /* Get data starting offset */
+rec_offset = CI_GET32 (pkt->data, PPD_RBOFF);           /* Get data starting offset */
 data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
 page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN), L_WORD) & 0x1FF;
 
@@ -387,8 +386,8 @@ while (total_data_len > 0) {
     if (pkt->data[PPD_OPC] == OPC_REQDATREC)
         pkt->data[PPD_OPC] = OPC_RETDAT;
     ci_readb (data_pte, data_len, page_offset + snd_offset, &pkt->data[CI_DATHDR]);
-    CI_PUT32 (pkt->data, 0x18, total_data_len);         /* update packet */
-    CI_PUT32 (pkt->data, 0x28, rec_offset);
+    CI_PUT32 (pkt->data, PPD_XFRSZ, total_data_len);    /* update packet */
+    CI_PUT32 (pkt->data, PPD_RBOFF, rec_offset);
     pkt->length = data_len + CI_DATHDR;
     r = ci_send_ppd (pkt);
     if (r != SCPE_OK)
@@ -403,15 +402,24 @@ return SCPE_OK;
 t_stat ci_receive_data (CI_PKT *pkt)
 {
 uint32 data_len, total_data_len;
-uint16 rec_name, page_offset;
+uint16 rec_name, page_offset, rec_key;
 uint32 rec_offset, data_pte;
+uint16 flags, key;
 t_stat r;
 
-total_data_len = CI_GET32 (pkt->data, 0x18);
-rec_name = CI_GET16 (pkt->data, 0x24);                  /* Get BDT table offset */
-rec_offset = CI_GET32 (pkt->data, 0x28);                /* Get data starting offset */
+total_data_len = CI_GET32 (pkt->data, PPD_XFRSZ);
+rec_name = CI_GET16 (pkt->data, PPD_RBNAM);             /* Get BDT table offset */
+rec_key = CI_GET16 (pkt->data, PPD_RBNAM + 2);
+rec_offset = CI_GET32 (pkt->data, PPD_RBOFF);           /* Get data starting offset */
+
+flags = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_FLAGS_OF, L_WORD);
+key = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_KEY_OF, L_WORD);
 data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
-page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN), L_WORD) & 0x1FF;
+page_offset = flags & BD_M_OFF;
+//page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN), L_WORD) & 0x1FF;
+
+if (rec_key != key)
+    sim_printf ("CI: wrong buffer key\n");
 
 if (total_data_len > CI_MAXDAT)
     data_len = CI_MAXDAT;
@@ -440,18 +448,18 @@ uint32 port = pkt->data[PPD_PORT];
 pkt->data[PPD_STATUS] = 0;                              /* status: OK */
 pkt->data[PPD_OPC] = OPC_RETID;                         /* set opcode */
 if (ci_check_vc (pkt->port, port)) {                    /* don't send ID once VC is open? */
-    CI_PUT32 (pkt->data, 0x10, 1);                      /* transaction ID low (MBZ to trigger START) */
+    CI_PUT32 (pkt->data, PPD_XCTID, 1);                 /* transaction ID low (MBZ to trigger START) */
     }
 else {
-    CI_PUT32 (pkt->data, 0x10, 0);                      /* transaction ID low (MBZ to trigger START) */
+    CI_PUT32 (pkt->data, PPD_XCTID, 0);                 /* transaction ID low (MBZ to trigger START) */
     }
-CI_PUT32 (pkt->data, 0x14, 0);                          /* transaction ID high (MBZ to trigger START) */
+CI_PUT32 (pkt->data, PPD_XCTID + 4, 0);                 /* transaction ID high (MBZ to trigger START) */
 #if 0                                                   /* SHAC */
-CI_PUT32 (pkt->data, 0x18, 0x80000022);                 /* remote port type */
+CI_PUT32 (pkt->data, 0x18, CI_SHAC);                    /* remote port type */
 CI_PUT32 (pkt->data, 0x1C, 0x03060D22);                 /* code revision */
 CI_PUT32 (pkt->data, 0x20, 0xFFFF0D00);                 /* function mask */
 #else                                                   /* CI780, CI750 */
-CI_PUT32 (pkt->data, 0x18, 0x80000002);                 /* remote port type */
+CI_PUT32 (pkt->data, 0x18, (CI_DUALPATH | CI_CI780));   /* remote port type */
 CI_PUT32 (pkt->data, 0x1C, 0x00700040);                 /* code revision */
 CI_PUT32 (pkt->data, 0x20, 0xFFFF0F00);                 /* function mask */
 #endif
@@ -571,6 +579,10 @@ uint32 hdr;
 
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_DFQA_OF, L_LONG);
 pkt->addr = gvp_remqhi (&ci_mmu, hdr);
+if (pkt->addr == 0)                                     /* queue error? */
+    return SCPE_EOF;
+if (pkt->addr == (ci_pqbb_va + PQB_MFQA_OF))            /* queue empty? */
+    return SCPE_EOF;
 return SCPE_OK;
 }
 
@@ -593,6 +605,10 @@ uint32 hdr;
 
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_MFQA_OF, L_LONG);
 pkt->addr = gvp_remqhi (&ci_mmu, hdr);
+if (pkt->addr == 0)                                     /* queue error? */
+    return SCPE_EOF;
+if (pkt->addr == (ci_pqbb_va + PQB_MFQA_OF))            /* queue empty? */
+    return SCPE_EOF;
 return SCPE_OK;
 }
 
@@ -614,7 +630,7 @@ return SCPE_IERR;
 t_stat ci_respond (CI_PKT *pkt)
 {
 if (pkt->addr != 0) {
-    ci_write_packet (pkt, 0x10); // TODO: move header size definitions to vax_ci.h
+    ci_write_packet (pkt, PPD_HDR);
     return ci_put_rsq (pkt);
     }
 return SCPE_IERR;

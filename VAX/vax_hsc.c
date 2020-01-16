@@ -34,6 +34,7 @@
 /* CI780 Port States */
 
 #define MAX_CONN        5                               /* max connections */
+#define MAX_BUFF        (CI_MAX_NODES)                  /* max buffer descriptors */
 
 typedef struct {
     char   *name;                                       /* SYSAP name */
@@ -41,6 +42,12 @@ typedef struct {
     uint32 mincr;                                       /* min credits */
     t_stat (*msgrec)(uint32 conid, CI_PKT *pkt);
 } SYSAP;
+
+typedef struct {
+    uint8 *buf;                                         /* buffer pointer */
+    size_t length;                                      /* buffer length */
+    UNIT *uptr;                                         /* buffer owner */
+} BDT;
 
 typedef struct {
     uint32 port;                                        /* remote port */
@@ -57,6 +64,7 @@ uint32 ci_madr;                                         /* mainteneance addr reg
 uint32 ci_mdatr[8192];                                  /* maintenanace data reg */
 uint32 ci_local_store[1024];
 CONN hsc_conn[MAX_CONN];
+BDT hsc_bdt[MAX_BUFF];
 
 extern int32 tmxr_poll;
 
@@ -484,6 +492,159 @@ memset (&pkt->data[PPD_TIME], 0, 8);                    /* current time */
 return ci_send_ppd (pkt);
 }
 
+int32 hsc_snddat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
+{
+CI_PKT pkt;
+BDT *bdt = NULL;
+CONN *conn = hsc_getconn (bd[2]);
+uint32 len, i, rboff, sboff;
+t_stat r = SCPE_OK;
+
+//FIXME: Should check if I/O actually done
+for (i = 0; i < MAX_BUFF; i++) {                        /* find existing buffer descriptor */
+    if (hsc_bdt[i].buf == buf) {
+        bdt = &hsc_bdt[i];
+        bdt->buf = NULL;                                /* remove buffer */
+        bdt->length = 0;
+        bdt->uptr = NULL;
+        return 0;                                       /* done */
+        }
+    }
+for (i = 0; i < MAX_BUFF; i++) {                        /* find free buffer descriptor */
+    if (hsc_bdt[i].length == 0) {
+        bdt = &hsc_bdt[i];
+        break;
+        }
+    }
+if (bdt == NULL)                                        /* none available? */
+    return xfrsz;
+
+bdt->buf = buf;                                         /* setup buffer */
+bdt->length = xfrsz;
+bdt->uptr = uptr;
+
+pkt.port = hsc_unit.CI_NODE;                            /* source port */
+pkt.data[PPD_PORT] = conn->port;                        /* dest port */
+pkt.data[PPD_STATUS] = 0;                               /* status */
+pkt.data[PPD_OPC] = OPC_SNDDAT;                         /* opcode */
+// TODO: Need to set flags (multiple, last packet)
+pkt.data[PPD_FLAGS] = 0;                                /* flags */
+CI_PUT32 (pkt.data, PPD_XCTID + 0, 0);                  /* transaction ID (low) */
+CI_PUT32 (pkt.data, PPD_XCTID + 4, 0);                  /* transaction ID (high) */
+CI_PUT32 (pkt.data, PPD_SBNAM, i);
+CI_PUT32 (pkt.data, PPD_RBNAM, bd[1]);
+
+sboff = 0;
+rboff = bd[0];
+while (xfrsz) {
+    len = (xfrsz > CI_MAXDAT) ? CI_MAXDAT : xfrsz;
+    pkt.length = len + CI_DATHDR;
+    CI_PUT32 (pkt.data, PPD_XFRSZ, xfrsz);
+    CI_PUT32 (pkt.data, PPD_SBOFF, sboff);
+    CI_PUT32 (pkt.data, PPD_RBOFF, rboff);
+    memcpy (&pkt.data[CI_DATHDR], &bdt->buf[sboff], len);
+    r = ci_send_ppd (&pkt);
+    if (r != SCPE_OK)
+        return xfrsz;                                   /* I/O error */
+    sboff += len;
+    rboff += len;
+    xfrsz -= len;
+    }
+return -1;                                              /* I/O in progress */
+}
+
+int32 hsc_reqdat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
+{
+CI_PKT pkt;
+BDT *bdt = NULL;
+CONN *conn = hsc_getconn (bd[2]);
+uint32 i;
+t_stat r;
+
+//FIXME: Should check if I/O actually done
+for (i = 0; i < MAX_BUFF; i++) {                        /* find existing buffer descriptor */
+    if (hsc_bdt[i].buf == buf) {
+        bdt = &hsc_bdt[i];
+        bdt->buf = NULL;                                /* remove buffer */
+        bdt->length = 0;
+        bdt->uptr = NULL;
+        return 0;                                       /* done */
+        }
+    }
+for (i = 0; i < MAX_BUFF; i++) {                        /* find free buffer descriptor */
+    if (hsc_bdt[i].length == 0) {
+        bdt = &hsc_bdt[i];
+        break;
+        }
+    }
+if (bdt == NULL)                                        /* none available? */
+    return xfrsz;
+
+bdt->buf = buf;                                         /* setup buffer */
+bdt->length = xfrsz;
+bdt->uptr = uptr;
+
+pkt.port = hsc_unit.CI_NODE;                            /* source port */
+pkt.length = CI_DATHDR;
+pkt.data[PPD_PORT] = conn->port;                        /* dest port */
+pkt.data[PPD_STATUS] = 0;                               /* status */
+pkt.data[PPD_OPC] = OPC_REQDAT;                         /* opcode */
+// TODO: Need to set flags (multiple, last packet)
+pkt.data[PPD_FLAGS] = 0;                                /* flags */
+CI_PUT32 (pkt.data, PPD_XCTID + 0, 0);                  /* transaction ID (low) */
+CI_PUT32 (pkt.data, PPD_XCTID + 4, 0);                  /* transaction ID (high) */
+CI_PUT32 (pkt.data, PPD_XFRSZ, xfrsz);
+CI_PUT32 (pkt.data, PPD_SBNAM, i);
+CI_PUT32 (pkt.data, PPD_SBOFF, 0);
+CI_PUT32 (pkt.data, PPD_RBNAM, bd[1]);
+CI_PUT32 (pkt.data, PPD_RBOFF, bd[0]);
+r = ci_send_ppd (&pkt);
+if (r != SCPE_OK)
+    return xfrsz;                                       /* I/O error */
+return -1;                                              /* I/O in progress */
+}
+
+t_stat hsc_datrec (CI_PKT *pkt)
+{
+uint32 xfrsz = CI_GET32 (pkt->data, PPD_XFRSZ);
+uint32 bnam = CI_GET32 (pkt->data, PPD_RBNAM);
+uint32 boff = CI_GET32 (pkt->data, PPD_RBOFF);
+uint32 len = (xfrsz > CI_MAXDAT) ? CI_MAXDAT : xfrsz;
+BDT *bdt;
+
+if (bnam < MAX_BUFF) {                                  /* valid name? */
+    bdt = &hsc_bdt[bnam];
+    if ((bdt->buf) && (boff < bdt->length))             /* valid buffer? */
+        memcpy (&bdt->buf[boff], &pkt->data[CI_DATHDR], len);
+    }
+
+if ((xfrsz - len) == 0) {                               /* last packet? */
+    pkt->length = CI_DATHDR;
+    pkt->data[PPD_OPC] = OPC_RETCNF;                    /* send confirmation */
+    ci_send_ppd (pkt);
+    sim_activate (bdt->uptr, 0);                        /* xfer done, reactivate */
+//    bdt->buf = NULL;                                    /* remove buffer */
+//    bdt->length = 0;
+//    bdt->uptr = NULL;
+    }
+return SCPE_OK;
+}
+
+t_stat hsc_cnfrec (CI_PKT *pkt)
+{
+uint32 bnam = CI_GET32 (pkt->data, PPD_SBNAM);
+BDT *bdt;
+
+if (bnam < MAX_BUFF) {                                  /* valid name? */
+    bdt = &hsc_bdt[bnam];
+    sim_activate (bdt->uptr, 0);                        /* xfer done, reactivate */
+//    bdt->buf = NULL;                                    /* remove buffer */
+//    bdt->length = 0;
+//    bdt->uptr = NULL;
+    }
+return SCPE_OK;
+}
+
 t_stat hsc_ppd (CI_PKT *pkt)
 {
 uint32 opcode = pkt->data[PPD_OPC];
@@ -500,6 +661,12 @@ switch (opcode) {
         
     case OPC_IDREC:
         return hsc_start (pkt, DG_START);
+
+    case OPC_DATREC:
+        return hsc_datrec (pkt);
+
+    case OPC_CNFREC:
+        return hsc_cnfrec (pkt);
         }
 }
 

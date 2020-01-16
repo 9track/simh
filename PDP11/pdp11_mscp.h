@@ -403,6 +403,12 @@
 #define RW_MAPH         13
 /*                      14                            *//* reserved */
 /*                      15                            *//* reserved */
+#define RW_BD0L         10                              /* buff desc */
+#define RW_BD0H         11
+#define RW_BD1L         12
+#define RW_BD1H         13
+#define RW_BD2L         14
+#define RW_BD2H         15
 
 /* Disk specific parameters */
 
@@ -412,10 +418,17 @@
 #define RW_WBCH         19
 #define RW_WBAL         20                              /* working ba */
 #define RW_WBAH         21
-#define RW_WBLL         22                              /* working lbn */
-#define RW_WBLH         23
-#define RW_WMPL         24                              /* working map */
-#define RW_WMPH         25
+#define RW_WMPL         22                              /* working map */
+#define RW_WMPH         23
+#define RW_WBLL         26                              /* working lbn */
+#define RW_WBLH         27
+
+#define RW_WBD0L        20                              /* working buff desc */
+#define RW_WBD0H        21
+#define RW_WBD1L        22
+#define RW_WBD1H        23
+#define RW_WBD2L        24
+#define RW_WBD2H        25
 
 /* Tape specific status */
 

@@ -70,6 +70,8 @@ t_bool rf_mscp (MSC *cp, uint16 pkt, t_bool q);
 t_bool rf_deqf (MSC *cp, uint16 *pkt);
 void rf_enqh (MSC *cp, uint16 *lh, uint16 pkt);
 t_stat hsc_mscp_done (MSC *cp, uint16 rf_pkt);
+int32 hsc_snddat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr);
+int32 hsc_reqdat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr);
 
 extern MSC rf_ctx;
 

@@ -52,10 +52,8 @@ typedef struct {                                        /* register mappings */
     uint32      rg;                                     /* register index */
 } REGMAP;
 
-extern UNIT ci_unit;
-
-t_stat ci_dec_rd (int32 *val, int32 rg, int32 lnt);
-t_stat ci_dec_wr (int32 val, int32 rg, int32 lnt);
+t_stat ci_dec_rd (UNIT *uptr, int32 *val, int32 rg, int32 lnt);
+t_stat ci_dec_wr (UNIT *uptr, int32 val, int32 rg, int32 lnt);
 t_stat ci_dec_svc (UNIT *uptr);
 t_stat ci_dec_reset (DEVICE *dptr);
 

@@ -173,7 +173,7 @@ DEVICE ci_dev = {
     1, 0, 0, 0, 0, 0,
     NULL, NULL, &ci_reset,
     NULL, &ci_attach, &ci_detach,
-    &ci_dib, DEV_NEXUS | DEV_DEBUG | DEV_DISABLE | DEV_DIS, 0,
+    &ci_dib, DEV_NEXUS | DEV_DEBUG | DEV_DISABLE | DEV_DIS | DEV_CI, 0,
     ci_debug, 0, 0
     };
 
@@ -204,15 +204,16 @@ REGMAP ci_regmap[] = {
 t_stat ci_rdreg (int32 *val, int32 pa, int32 lnt)
 {
 int32 rg = (pa & 0xFFF);
+UNIT *uptr = &ci_unit;
 REGMAP *p;
 
-if ((rg >= 0x800) && (ci_state < PORT_UCODERUN)) {      /* microcode not running? */
+if ((rg >= 0x800) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
     *val = ci_local_store[(rg - 0x800)];
     return SCPE_OK;
     }
 for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port register */
     if (p->offset == rg)                                /* mapped? */
-        return ci_dec_rd (val, p->rg, lnt);
+        return ci_dec_rd (uptr, val, p->rg, lnt);
     }
 switch (rg) {                                           /* CI780 specific registers */
 
@@ -223,7 +224,7 @@ switch (rg) {                                           /* CI780 specific regist
 
     case PMCSR_OF:
     case PMCSR_OF1:
-        if (ci_state > PORT_UNINIT)
+        if (uptr->ci_state > PORT_UNINIT)
             ci_pmcsr = ci_pmcsr & ~PMCSR_UI;
         else
             ci_pmcsr = ci_pmcsr | PMCSR_UI;
@@ -251,18 +252,16 @@ return SCPE_OK;
 t_stat ci_wrreg (int32 val, int32 pa, int32 lnt)
 {
 int32 rg = (pa & 0xFFF);
-int32 src_ipa, src_ipp;
-t_stat r;
 UNIT *uptr = &ci_unit;
 REGMAP *p;
 
-if ((rg >= 0x800) && (ci_state < PORT_UCODERUN)) {      /* microcode not running? */
+if ((rg >= 0x800) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
     ci_local_store[(rg - 0x800)] = val;
     return SCPE_OK;
     }
 for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port register */
     if (p->offset == rg)                                /* mapped? */
-        return ci_dec_wr (val, p->rg, lnt);
+        return ci_dec_wr (uptr, val, p->rg, lnt);
     }
 switch (rg) {                                           /* case on type */
 
@@ -281,7 +280,7 @@ switch (rg) {                                           /* case on type */
         ci_pmcsr &= ~(val & PMCSR_W1C);                 /* Clear W1C bits */
         ci_pmcsr = (ci_pmcsr & ~PMCSR_RW) | (val & PMCSR_RW); /* Set RW bits */
 
-        if (ci_state > PORT_UNINIT)
+        if (uptr->ci_state > PORT_UNINIT)
             ci_pmcsr = ci_pmcsr & ~PMCSR_UI;
         else
             ci_pmcsr = ci_pmcsr | PMCSR_UI;
@@ -293,8 +292,8 @@ switch (rg) {                                           /* case on type */
         if (val & PMCSR_MIF)                            /* interrupt W1C */
             ci_clr_int();
 
-        if ((val & PMCSR_PSA) && (ci_state < PORT_UCODERUN)) {
-            ci_set_state (PORT_UCODERUN);               /* Start microcode */
+        if ((val & PMCSR_PSA) && (uptr->ci_state < PORT_UCODERUN)) {
+            ci_set_state (uptr, PORT_UCODERUN);         /* Start microcode */
             }
         break;
 

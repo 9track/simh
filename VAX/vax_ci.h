@@ -42,7 +42,8 @@
 
 /* Unit Specific Data */
 
-#define CI_NODE         u3
+#define ci_node         u3                              /* port addr */
+#define ci_state        u4                              /* port state */
 
 /* CI Port Types */
 
@@ -274,21 +275,17 @@
 typedef struct {
     uint32 type;                                        /* adpater specific use */
     uint32 addr;                                        /* associated memory address */
-    uint32 port;                                        /* source/dest port */
     size_t size;
     size_t length;                                      /* packet length */
     uint8 data[CI_MAXFR];                               /* packet data */
 } CI_PKT;
 
-extern uint32 ci_state;
-extern DEVICE ci_dev;
-
-void ci_set_state (uint32 state);
-t_stat ci_send_ppd (CI_PKT *pkt);
-t_stat ci_receive_ppd (CI_PKT *pkt);
-t_stat ci_open_vc (uint8 port);
-t_stat ci_close_vc (uint8 port);
-t_bool ci_check_vc (uint8 lport, uint8 rport);
+void ci_set_state (UNIT *uptr, uint32 state);
+t_stat ci_send_ppd (UNIT *uptr, CI_PKT *pkt);
+t_stat ci_receive_ppd (UNIT *uptr, CI_PKT *pkt);
+t_stat ci_open_vc (UNIT *uptr, uint8 port);
+t_stat ci_close_vc (UNIT *uptr, uint8 port);
+t_bool ci_check_vc (UNIT *uptr, uint8 port);
 t_stat ci_show_node (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
 t_stat ci_set_node (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat ci_show_group (FILE *st, UNIT *uptr, int32 val, CONST void *desc);

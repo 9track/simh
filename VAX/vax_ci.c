@@ -204,32 +204,34 @@ void ci_dump_packet (UNIT *uptr, char* buffer, uint32 length)
 {
 uint8 tbyte;
 int32 i, j;
-return;
+
+if ((uptr->dptr->dctrl & DBG_PKT) == 0)
+    return;
+
 for (i = 0; i < length; i+=4) {
-    sim_debug_unit (DBG_SCSMSG, uptr, "  %04X: ", i);
-//    sim_debug_unit (DBG_SCSMSG, ci_dev, "  %s: ", prefix);
-    sim_debug_unit (DBG_SCSMSG, uptr, "  ");
+    sim_debug_unit (DBG_PKT, uptr, "  %04X: ", i);
+    sim_debug_unit (DBG_PKT, uptr, "  ");
     for (j = 3; j >= 0; j--) {
         if ((i + j) < length) {
             tbyte = buffer[i+j];
-            sim_debug_unit (DBG_SCSMSG, uptr, "%02X ", tbyte);
+            sim_debug_unit (DBG_PKT, uptr, "%02X ", tbyte);
             }
         else
-            sim_debug_unit (DBG_SCSMSG, uptr, "   ", tbyte);
+            sim_debug_unit (DBG_PKT, uptr, "   ", tbyte);
         }
-    sim_debug_unit (DBG_SCSMSG, uptr, " ");
+    sim_debug_unit (DBG_PKT, uptr, " ");
     for (j = 0; j < 4; j++) {
         if ((i + j) < length) {
             tbyte = buffer[i+j];
             if ((tbyte > 0x1F) && (tbyte < 0x7F))
-                sim_debug_unit (DBG_SCSMSG, uptr, "%c", tbyte);
+                sim_debug_unit (DBG_PKT, uptr, "%c", tbyte);
             else
-                sim_debug_unit (DBG_SCSMSG, uptr, ".");
+                sim_debug_unit (DBG_PKT, uptr, ".");
             }
         else
-            sim_debug_unit (DBG_SCSMSG, uptr, " ");
+            sim_debug_unit (DBG_PKT, uptr, " ");
         }
-    sim_debug_unit (DBG_SCSMSG, uptr, "\n");
+    sim_debug_unit (DBG_PKT, uptr, "\n");
     }
 }
 
@@ -1330,6 +1332,8 @@ uint32 i;
 uint8  src_ci_port;
 t_stat r;
 CI_ITEM *item;
+
+sim_clock_coschedule (uptr, tmxr_poll);                 /* continue poll */
 
 if ((uptr->flags & UNIT_ATT) == 0)
     return SCPE_OK;

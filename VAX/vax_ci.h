@@ -33,12 +33,13 @@
 #define DBG_WRN         0x0002                          /* warnings */
 #define DBG_REQID       0x0004                          /* request IDs/reponses */
 #define DBG_SCSDG       0x0008                          /* SCS datagrams */
-#define DBG_SCSMSG      0x0010                          /* SCS Messages */
-#define DBG_PPDDG       0x0020                          /* PPD Datagrams */
-#define DBG_BLKTF       0x0040                          /* block transfer requests/responses/confirms */
+#define DBG_SCSMSG      0x0010                          /* SCS messages */
+#define DBG_PPDDG       0x0020                          /* PPD datagrams */
+#define DBG_BLKTF       0x0040                          /* block transfers */
 #define DBG_LCMD        0x0080                          /* local commands */
 #define DBG_CONN        0x0100                          /* connections */
 #define DBG_TRC         0x0200                          /* trace */
+#define DBG_PKT         0x0400                          /* packet data */
 
 /* Unit Specific Data */
 

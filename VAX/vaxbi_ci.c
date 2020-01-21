@@ -162,6 +162,7 @@ DEBTAB ci_debug[] = {
     { "LCMD",   DBG_LCMD },
     { "CONN",   DBG_CONN },
     { "TRACE",  DBG_TRC },
+    { "PKT",    DBG_PKT },
     { 0 }
     };
 

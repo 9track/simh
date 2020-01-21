@@ -699,9 +699,7 @@ do {
         r = ci_receive (uptr, &pkt);
 } while (r == SCPE_OK);
 // TODO: handle errors from ci_receive
-ci_svc (uptr);
-sim_clock_coschedule (uptr, tmxr_poll);
-return SCPE_OK;
+return ci_svc (uptr);
 }
 
 /* Reset CI adapter */

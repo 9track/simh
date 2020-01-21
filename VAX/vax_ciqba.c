@@ -395,6 +395,7 @@ DEBTAB ci_debug[] = {
     { "LCMD",   DBG_LCMD },
     { "CONN",   DBG_CONN },
     { "TRACE",  DBG_TRC },
+    { "PKT",    DBG_PKT },
     { 0 }
     };
 
@@ -403,7 +404,7 @@ DEVICE ci_dev = {
     2, DEV_RDX, 20, 1, DEV_RDX, 16,
     NULL, NULL, &ci_reset,
     NULL, &ciqba_attach, &ciqba_detach,
-    &ci_dib, DEV_QBUS | DEV_DEBUG, 0,
+    &ci_dib, DEV_QBUS | DEV_DEBUG | DEV_CI, 0,
     ci_debug, 0, 0
     };
 
@@ -434,7 +435,7 @@ switch (rg) {
         break;
 
     case CI_PORT_NUM:
-        *data = ci_node;
+        *data = ci_unit[0].ci_node;
         break;
 
     case CI_MEM_ADDR_LO:
@@ -505,11 +506,11 @@ switch (rg) {
             ci_vtba |= CIS_OP_COMPLETE;
         else if (data & CCR_INITIALIZE) {
             ci_csr |= CSR_INITIALIZED;
-            ci_set_state (PORT_INIT);
+            ci_set_state (&ci_unit[0], PORT_INIT);
             }
         else if (data & CCR_START) {
             ci_csr |= CSR_RUNNING;
-            ci_set_state (PORT_ENABLED);
+            ci_set_state (&ci_unit[0], PORT_ENABLED);
             }
         else if (data & CCR_SEND_HI_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_HI_ATTN\n");
@@ -525,7 +526,7 @@ switch (rg) {
                 ci_csr &= ~CSR_RUNNING;
             if (data & CCR_HALT) {
                 ci_csr &= ~CSR_INITIALIZED;
-                ci_set_state (PORT_UNINIT);
+                ci_set_state (&ci_unit[0], PORT_UNINIT);
                 }
             }
         ci_ccr = data & CCR_ENABLE_INT;
@@ -742,16 +743,6 @@ if (entry & RENT_CIQBA_OWNED)
 return FALSE;
 }
 
-t_bool ci_can_dispose ()
-{
-return ci_can_enq (&ci_dsp);
-}
-
-t_bool ci_can_receive ()
-{
-return ci_can_deq (&ci_rcv);
-}
-
 void ci_fmt_receive (CI_PKT *pkt)
 {
 uint32 swflags = pkt->data[PPD_SWFLAG];
@@ -771,8 +762,8 @@ if (flags & 0x8)   // PPD_M_LP
 swflags |= ((flags << 3) & 0x30); // Add received path
 pkt->data[CIPPD_LEN_HI] = (pkt->length >> 8) & 0xFF;
 pkt->data[CIPPD_LEN_LO] = pkt->length & 0xFF;
-pkt->data[CIPPD_DEST] = ci_node;
-pkt->data[CIPPD_NOT_DEST] = ~ci_node;
+pkt->data[CIPPD_DEST] = ci_unit[0].ci_node;
+pkt->data[CIPPD_NOT_DEST] = ~ci_unit[0].ci_node;
 pkt->data[CIPPD_SRC] = port;
 pkt->data[CIPPD_OPC] = opc;
 pkt->data[CIPPD_SEQ_CNTRL] = swflags;
@@ -872,11 +863,11 @@ switch (pkt->data[PPD_OPC]) {
         port = pkt->data[PPD_PORT];
         if (!ci_vc_open[port]) {
             sim_debug (DBG_REG, &ci_dev, "CIQBA Opening VC to %d\n", port);
-            r = ci_open_vc (port);
+            r = ci_open_vc (&ci_unit[0], port);
             }
         else {
             sim_debug (DBG_REG, &ci_dev, "CIQBA Closing VC to %d\n", port);
-            r = ci_close_vc (port);
+            r = ci_close_vc (&ci_unit[0], port);
             }
         if (r == SCPE_OK) {
             sim_debug (DBG_REG, &ci_dev, "CIQBA VC status: OK\n");
@@ -907,7 +898,9 @@ return SCPE_OK;
 t_stat ci_svc_queue (CI_QUEUE *queue, uint32 *processed)
 {
 CI_PKT pkt;
+UNIT *uptr = &ci_unit[0];
 t_stat r = SCPE_OK;
+
 while (ci_can_enq (&ci_dsp)) {
     if (ci_dequeue (queue, &pkt, FALSE) != SCPE_OK)
         break;
@@ -918,17 +911,15 @@ while (ci_can_enq (&ci_dsp)) {
         break;
         }
     pkt.length = pkt.size;
-    pkt.port = ci_node;
     ci_fmt_send (&pkt);
     sim_debug (DBG_REG, &ci_dev, "Processing packet: type = %d\n", pkt.type);
     if (pkt.type == 1) {
-        r = ci_route_ppd (&pkt);
-        if (r == SCPE_OK) {
-            if (pkt->data[PPD_FLAGS] & PPD_RSP)         /* response requested? */
-                r = ci_respond (pkt);                   /* driver wants it back */
-            else
-                r = ci_dispose (pkt);                   /* dispose of packet */
-            }
+        r = ci_send_ppd (uptr, &pkt);
+        // FIXME: Handle status from ci_send_ppd
+        if (pkt.data[PPD_FLAGS] & PPD_RSP)          /* response requested? */
+            r = ci_respond (&pkt);                  /* driver wants it back */
+        else
+            r = ci_dispose (&pkt);                  /* dispose of packet */
         }
     else
         r = ciqba_msg (&pkt);
@@ -942,6 +933,7 @@ return r;
 
 t_stat ciqba_svc (UNIT *uptr)
 {
+CI_PKT pkt;
 t_stat r;
 uint32 processed = 0;
 r = ci_svc_queue (&ci_sndh, &processed);
@@ -959,6 +951,15 @@ if (processed > 0) {
     ci_csr |= CSR_SEND_LO_AVAIL;
     SET_INT (CI);
     }
+while (ci_can_deq (&ci_rcv)) {
+    r = ci_receive_ppd (uptr, &pkt);
+// TODO: handle errors from ci_receive
+    if (r != SCPE_OK)
+        break;
+    r = ci_receive (&pkt);
+    if (r != SCPE_OK)
+        return r;
+    };
 return ci_svc (uptr);
 }
 

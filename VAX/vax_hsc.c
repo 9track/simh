@@ -114,6 +114,7 @@ DEBTAB hsc_debug[] = {
     { "LCMD",   DBG_LCMD },
     { "CONN",   DBG_CONN },
     { "TRACE",  DBG_TRC },
+    { "PKT",    DBG_PKT },
     { 0 }
     };
 
@@ -250,7 +251,6 @@ CI_PUT16 (pkt->data, PPD_LENGTH, (pkt->length - PPD_MSGHDR));
 CI_PUT16 (pkt->data, PPD_STYPE, SCS_CONRSP);
 CI_PUT16 (pkt->data, SCS_CREDIT, 0);
 CI_PUT32 (pkt->data, SCS_DSTCON, srccon);
-CI_PUT32 (pkt->data, SCS_SRCCON, 0);
 if (!sysap)                                             /* SYSAP not found? */
     stat = SCS_STNOMAT;                                 /* no matching listener */
 else {
@@ -267,6 +267,7 @@ else {
     if (!conid)
         stat = SCS_STNORS;                              /* no resources */
     }
+CI_PUT32 (pkt->data, SCS_SRCCON, conid);
 CI_PUT16 (pkt->data, SCS_STATUS, stat);
 ci_send_ppd (&hsc_unit, pkt);                           /* send CONRSP */
 if (stat == SCS_STNORM) {
@@ -678,9 +679,7 @@ do {
         r = hsc_ppd (&pkt);
 } while (r == SCPE_OK);
 // TODO: handle errors from hsc_ppd
-//ci_svc (uptr);
-sim_clock_coschedule (uptr, tmxr_poll);
-return SCPE_OK;
+return ci_svc (uptr);
 }
 
 t_stat hsc_show_sysid (FILE *st, UNIT *uptr, int32 val, CONST void *desc)

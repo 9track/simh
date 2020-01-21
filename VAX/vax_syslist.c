@@ -61,6 +61,7 @@ extern DEVICE lk_dev;
 extern DEVICE vs_dev;
 extern DEVICE ci_dev;
 extern DEVICE hsc_dev;
+extern DEVICE rf_dev;
 
 extern UNIT cpu_unit;
 
@@ -95,6 +96,7 @@ DEVICE *sim_devices[] = {
     &tq_dev,
     &ci_dev,
     &hsc_dev,
+    &rf_dev,
     &xq_dev,
     &xqb_dev,
     NULL

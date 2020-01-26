@@ -113,6 +113,8 @@
 #define PPD_VCPVAL      0x18                            /* VCD previous value */
 
 #define PPD_XCTID       0x10                            /* transaction ID */
+#define PPD_LCONID      0x10                            /* local connection id */
+#define PPD_RSPID       0x14                            /* local response id */
 #define PPD_XFRSZ       0x18                            /* transfer size */
 #define PPD_SBNAM       0x1C                            /* send buffer name */
 #define PPD_SBOFF       0x20                            /* send buffer offset */
@@ -244,6 +246,7 @@
 #define PPD_M_SP        0x3
 #define PPD_V_M         4                               /* multiple value, blk xfer only */
 #define PPD_M_M         0x7
+#define PPD_LP          0x8                             /* last packet (blk xfer) */
 #define PPD_P           0x80                            /* 0/1 for 512/576 data pkt size */
                                                         /*  or packing format for messages */
                                                         /*  to PDP 10/20 ports. */
@@ -271,7 +274,7 @@
 /* Block transfer constants */
 
 #define CI_DATHDR       (PPD_RBOFF + 4)
-#define CI_MAXDAT       (CI_MAXFR - CI_DATHDR)
+#define CI_MAXDAT       512
 
 typedef struct {
     uint32 type;                                        /* adpater specific use */

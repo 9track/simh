@@ -389,6 +389,8 @@ while (total_data_len > 0) {
     ci_readb (data_pte, data_len, page_offset + snd_offset, &pkt->data[CI_DATHDR]);
     CI_PUT32 (pkt->data, PPD_XFRSZ, total_data_len);    /* update packet */
     CI_PUT32 (pkt->data, PPD_RBOFF, rec_offset);
+    if (total_data_len <= CI_MAXDAT)
+        pkt->data[PPD_FLAGS] |= PPD_LP;                 /* last packet */
     pkt->length = data_len + CI_DATHDR;
     r = ci_send_ppd (uptr, pkt);
     if (r != SCPE_OK)
@@ -431,11 +433,11 @@ ci_writeb (data_pte, data_len, page_offset + rec_offset, &pkt->data[CI_DATHDR]);
 
 total_data_len -= data_len;
 
-if (total_data_len == 0) {
+if (pkt->data[PPD_FLAGS] & PPD_LP) {                    /* last packet? */
     pkt->length = CI_DATHDR;
     if (pkt->data[PPD_OPC] == OPC_SNDDATREC) {
         pkt->data[PPD_OPC] = OPC_RETCNF;
-        return ci_send_ppd (uptr, pkt);
+        return ci_send_ppd (uptr, pkt);                 /* send confirmation */
         }
     else                                                /* DATREC */
         return ci_receive_int (uptr, pkt);              /* pass to system */

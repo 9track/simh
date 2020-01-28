@@ -68,6 +68,7 @@
 #define CSR_SEND_LO_AVAIL    0x0002
 #define CSR_DISPOSE_ATTN     0x0004
 #define CSR_RECEIVE_ATTN     0x0008
+#define CSR_ATTN             0x000F
 #define CSR_INITIALIZED      0x0010
 #define CSR_RUNNING          0x0020
 #define CSR_DMA_TIMEOUT      0x0040
@@ -364,6 +365,7 @@ int32 ci_vtb_rd (int32 pa);
 void ci_vtb_wr (int32 pa, int32 data);
 t_stat ci_receive_int (CI_PKT *pkt, t_bool internal);
 t_stat ci_svc_queue (CI_QUEUE *queue, uint32 *processed);
+t_stat ci_sw_reset (DEVICE *dptr);
 t_stat ci_reset (DEVICE *dptr);
 int32 ci_inta (void);
 char *ci_sym (uint32 addr);
@@ -441,7 +443,7 @@ switch (rg) {
 
     case CI_STATUS_REG:
         *data = ci_csr;
-        ci_csr = ci_csr & ~(CSR_RECEIVE_ATTN | CSR_DISPOSE_ATTN | CSR_SEND_LO_AVAIL | CSR_SEND_HI_AVAIL);
+        ci_csr = ci_csr & ~CSR_ATTN;
         break;
 
     case CI_INTERRUPT_VEC:
@@ -523,7 +525,7 @@ switch (rg) {
         else if (data & CCR_WRITE_EEPROM)
             ci_vtba |= CIS_OP_COMPLETE;
         else if (data & CCR_INITIALIZE) {
-            ci_reset (&ci_dev);
+            ci_sw_reset (&ci_dev);
             ci_csr |= CSR_INITIALIZED;
             ci_set_state (&ci_unit[0], PORT_INIT);
             }
@@ -770,7 +772,8 @@ uint32 flags = pkt->data[PPD_FLAGS];
 uint32 i;
 
 if ((opc != OPC_SNDDG) && (opc != OPC_SNDMSG)) {
-    for (i = pkt->length; i >= PPD_MTYPE; i--)
+    pkt->length += 2;
+    for (i = pkt->length - 1; i >= PPD_MTYPE; i--)
         pkt->data[i] = pkt->data[i-2];
     }
 
@@ -791,14 +794,11 @@ if (pkt->length < 0x12)
 
 void ci_fmt_send (CI_PKT *pkt)
 {
-uint32 opc = pkt->data[PPD_OPC];
 uint32 i;
 
-if ((opc != OPC_SNDDG) && (opc != OPC_SNDMSG)) {
-    for (i = PPD_LENGTH; i < pkt->length - 2; i++)
-        pkt->data[i] = pkt->data[i+2];
-    pkt->length = pkt->length - 2;
-    }
+for (i = PPD_LENGTH; i < pkt->length - 2; i++)
+    pkt->data[i] = pkt->data[i+2];
+pkt->length = pkt->length - 2;
 }
 
 t_stat ci_send_data (UNIT *uptr, CI_PKT *pkt)
@@ -841,7 +841,7 @@ while (xfrsz) {
     if ((xfrsz <= CIQBA_MAXDAT) && last)
         blk.data[CIPPD_SEQ_CNTRL] |= CIPPD_LAST;        /* last packet */
     CI_PUT32 (blk.data, CIPPD_OFFSET, rboff);
-    r = ci_receive_int (&blk, TRUE);                        /* pass to system */
+    r = ci_receive_int (&blk, TRUE);                    /* pass to system */
     if (r != SCPE_OK)
         sim_printf ("Failed to receive packet\n");
     xfrsz -= rblen;
@@ -856,11 +856,16 @@ t_stat ci_send (CI_PKT *pkt)
 UNIT *uptr = &ci_unit[0];
 
 switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
+
     case OPC_SNDDAT:
     case OPC_RETDAT:
         return ci_send_data (uptr, pkt);
+
+    case OPC_REQID:
+    case OPC_RETID:
+        ci_fmt_send (pkt);                              /* convert to CI format */
+        break;
         }
-//ci_fmt_send (pkt);                                      /* convert to CI format */
 return ci_send_ppd (uptr, pkt);
 }
 
@@ -868,8 +873,8 @@ t_stat ci_dispose_int (CI_PKT *pkt, t_bool internal)
 {
 sim_debug (DBG_REG, &ci_dev, "ci_dispose\n");
 ci_csr |= CSR_DISPOSE_ATTN;
-if (ci_ccr & CCR_ENABLE_INT)
-    SET_INT (CI);
+//if (ci_ccr & CCR_ENABLE_INT)
+//    SET_INT (CI);
 pkt->size = 0;
 return ci_enqueue (&ci_dsp, pkt, internal);
 }
@@ -884,8 +889,8 @@ t_stat ci_respond (CI_PKT *pkt)
 sim_debug (DBG_REG, &ci_dev, "ci_respond\n");
 ci_write_packet (pkt, 0x10); // TODO: move header size definitions to vax_ci.h
 ci_csr |= CSR_DISPOSE_ATTN;
-if (ci_ccr & CCR_ENABLE_INT)
-    SET_INT (CI);
+//if (ci_ccr & CCR_ENABLE_INT)
+//    SET_INT (CI);
 pkt->size = 0;
 return ci_enqueue (&ci_dsp, pkt, FALSE);
 }
@@ -901,8 +906,8 @@ if (r != SCPE_OK)
     sim_debug (DBG_REG, &ci_dev, "ci_dequeue failed\n");
 ci_write_packet (pkt, pkt->length);
 ci_csr |= CSR_RECEIVE_ATTN;
-if (ci_ccr & CCR_ENABLE_INT)
-    SET_INT (CI);
+//if (ci_ccr & CCR_ENABLE_INT)
+//    SET_INT (CI);
 return ci_enqueue (&ci_rcv, pkt, internal);
 }
 
@@ -1029,7 +1034,7 @@ if (r != SCPE_OK)
     return r;
 if (processed > 0) {
     ci_csr |= CSR_SEND_HI_AVAIL;
-    SET_INT (CI);
+//    SET_INT (CI);
     }
 processed = 0;
 r = ci_svc_queue (&ci_sndl, &processed);
@@ -1037,7 +1042,7 @@ if (r != SCPE_OK)
     return r;
 if (processed > 0) {
     ci_csr |= CSR_SEND_LO_AVAIL;
-    SET_INT (CI);
+//    SET_INT (CI);
     }
 while (ci_can_deq (&ci_rcv)) {
     r = ci_receive_ppd (uptr, &pkt);
@@ -1048,6 +1053,8 @@ while (ci_can_deq (&ci_rcv)) {
     if (r != SCPE_OK)
         return r;
     };
+if ((ci_csr & CSR_ATTN) && (ci_ccr & CCR_ENABLE_INT))
+    SET_INT (CI);
 return ci_svc (uptr);
 }
 
@@ -1087,18 +1094,14 @@ else
     return detach_unit (uptr);
 }
 
-/* Reset CI adapter */
+/* Software reset */
 
-t_stat ci_reset (DEVICE *dptr)
+t_stat ci_sw_reset (DEVICE *dptr)
 {
 int32 i;
 
-DIB *dibp = (DIB *)ci_dev.ctxt;
 ci_ccr = 0;
 ci_csr = 0;
-dibp->vec = 0;
-ci_vtba = 0;
-ci_vtbd = 0;
 ci_rcv.ptr = 0;
 ci_dsp.ptr = 0;
 ci_sndl.ptr = 0;
@@ -1106,6 +1109,17 @@ ci_sndh.ptr = 0;
 for (i = 0; i < 32; i++)
     ci_vc_open[i] = FALSE;
 CLR_INT (CI);
-ci_port_reset (dptr);
+return ci_port_reset (dptr);
+}
+
+/* Reset CI adapter */
+
+t_stat ci_reset (DEVICE *dptr)
+{
+DIB *dibp = (DIB *)ci_dev.ctxt;
+dibp->vec = 0;
+ci_vtba = 0;
+ci_vtbd = 0;
+ci_sw_reset (dptr);
 return auto_config (0, 0);                              /* run autoconfig */
 }

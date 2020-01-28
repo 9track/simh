@@ -603,8 +603,8 @@ CI_NODE *node = &cp->nodes[port];
 sim_debug_unit (DBG_REQID, uptr, "==> RETID, dest: %d, path: %s\n", port, ci_path_names[path]);
 ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 pkt->data[PPD_STATUS] = 0;                              /* Status OK */
-if (VCD_OPEN (node->vcd))                               /* VC open? */
-    pkt->data[0x12] = 1;                                /* set transaction ID */
+if (ci_check_vc (uptr, port))                           /* VC open? */
+    pkt->data[PPD_LCONID] = 1;                          /* set transaction ID */
 return SCPE_OK;
 }
 

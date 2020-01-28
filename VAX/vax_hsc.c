@@ -31,12 +31,14 @@
 #include "vax_ci.h"
 #include "vax_rf.h"
 
-/* CI780 Port States */
+/* Limits */
 
 #define MAX_CONN        5                               /* max connections */
 #define MAX_BUFF        (CI_MAX_NODES)                  /* max buffer descriptors */
 
 #define HSC_TIMER       1
+
+/* SYSAP descriptor */
 
 typedef struct {
     char   *name;                                       /* SYSAP name */
@@ -45,6 +47,8 @@ typedef struct {
     t_stat (*msgrec)(uint32 conid, CI_PKT *pkt);
 } SYSAP;
 
+/* Buffer descriptor */
+
 typedef struct {
     uint8 *buf;                                         /* buffer pointer */
     size_t xfrsz;                                       /* buffer length */
@@ -52,12 +56,16 @@ typedef struct {
     UNIT *uptr;                                         /* buffer owner */
 } BDT;
 
+/* SCS Connection descriptor */
+
 typedef struct {
     uint32 port;                                        /* remote port */
     uint32 conid;                                       /* remote conid */
     uint32 credits;                                     /* current credits */
     SYSAP *sysap;                                       /* SYSAP descriptor */
 } CONN;
+
+/* Virtual circuit states */
 
 #define STATE_CLOSED    0
 #define STATE_IDREC     1
@@ -146,6 +154,7 @@ CI_NODE ci_node = {
 */
 
 /* Find a connection with the given id */
+
 CONN *hsc_getconn (uint32 conid)
 {
 if (conid < MAX_CONN) {                                 /* valid? */
@@ -409,6 +418,8 @@ switch (msg_type) {
         }
 }
 
+/* PPD datagram or SCS message received */
+
 t_stat hsc_dgrec (CI_PKT *pkt)
 {
 uint32 port = pkt->data[PPD_PORT];
@@ -443,6 +454,8 @@ switch (dg_type) {
 return SCPE_OK;
 }
 
+/* Process request for port ID */
+
 t_stat hsc_reqrec (CI_PKT *pkt)
 {
 pkt->data[PPD_STATUS] = 0;                              /* status: OK */
@@ -463,6 +476,8 @@ pkt->data[0x25] = 0x4;                                  /* port state (maint = 0
 pkt->length = 0x26;  // TODO: check length, add #define
 return ci_send_ppd (&hsc_unit[0], pkt);
 }
+
+/* Process START datagram */
 
 t_stat hsc_start (CI_PKT *pkt, uint32 dg_type)
 {
@@ -502,6 +517,8 @@ memset (&pkt->data[PPD_TIME], 0, 8);                    /* current time */
 return ci_send_ppd (&hsc_unit[0], pkt);
 }
 
+/* Process STACK datagram */
+
 t_stat hsc_stack (CI_PKT *pkt)
 {
 pkt->length = PPD_MTYPE + 2;
@@ -512,6 +529,8 @@ CI_PUT16 (pkt->data, PPD_MTYPE, DG_ACK);
 CI_PUT16 (pkt->data, PPD_LENGTH, (pkt->length - PPD_DGHDR));
 return ci_send_ppd (&hsc_unit[0], pkt);
 }
+
+/* Send block data */
 
 int32 hsc_snddat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
 {
@@ -583,6 +602,8 @@ while (xfrsz) {
 return -1;                                              /* I/O in progress */
 }
 
+/* Request block data */
+
 int32 hsc_reqdat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
 {
 CI_PKT pkt;
@@ -641,6 +662,8 @@ if (r != SCPE_OK) {
 return -1;                                              /* I/O in progress */
 }
 
+/* Process received block data */
+
 t_stat hsc_datrec (CI_PKT *pkt)
 {
 uint32 xfrsz = CI_GET32 (pkt->data, PPD_XFRSZ);
@@ -666,6 +689,8 @@ if (pkt->data[PPD_FLAGS] & PPD_LP) {                    /* last packet? */
 return SCPE_OK;
 }
 
+/* Process confirmation of block data */
+
 t_stat hsc_cnfrec (CI_PKT *pkt)
 {
 uint32 bnam = CI_GET32 (pkt->data, PPD_RSPID);
@@ -678,10 +703,14 @@ if (bnam < MAX_BUFF) {                                  /* valid name? */
 return SCPE_OK;
 }
 
+/* Process received PPD */
+
 t_stat hsc_ppd (CI_PKT *pkt)
 {
 uint32 opcode = pkt->data[PPD_OPC];
 uint32 port = pkt->data[PPD_PORT];
+uint32 conid, rspid;
+
 switch (opcode) {
 
     case OPC_DGREC:
@@ -694,8 +723,13 @@ switch (opcode) {
         return hsc_reqrec (pkt);
         
     case OPC_IDREC:
-        hsc_state[port] = STATE_IDREC;
-        return hsc_start (pkt, DG_START);
+        conid = CI_GET32 (pkt->data, PPD_LCONID);
+        rspid = CI_GET32 (pkt->data, PPD_RSPID);
+        if ((conid | rspid) == 0) {                     /* transaction ID = 0? */
+            hsc_state[port] = STATE_IDREC;
+            return hsc_start (pkt, DG_START);           /* yes, send START */
+            }
+        break;
 
     case OPC_DATREC:
         return hsc_datrec (pkt);
@@ -703,6 +737,7 @@ switch (opcode) {
     case OPC_CNFREC:
         return hsc_cnfrec (pkt);
         }
+return SCPE_OK;
 }
 
 /* Clock service (roughly once per second) */

@@ -1101,7 +1101,8 @@ if (node->uptr) {                                       /* local port? */
     node->conn = LINK_CLOSED;
     return SCPE_OK;                                     /* yes, done */
     }
-sim_close_sock (node->socket);
+if (node->socket != 0)
+    sim_close_sock (node->socket);
 node->socket = 0;
 node->conn = LINK_CLOSED;
 return SCPE_OK;
@@ -1419,16 +1420,12 @@ uptr->port_ctx = (void *) realloc (uptr->port_ctx, sizeof (CI_PORT));
 cp = (CI_PORT *)uptr->port_ctx;
 
 for (i = 0; i < CI_MAX_NODES; i++) {
-    if (cp->nodes[i].socket != 0) {                     /* close open VCs */
-        sim_close_sock (cp->nodes[i].socket);
-        cp->nodes[i].socket = 0;
-        }
+    ci_close_vc (uptr, i);                              /* close open VCs */
     if (cp->wait_sock[i] != 0) {                        /* close pending VCs */
         sim_close_sock (cp->wait_sock[i]);
         cp->wait_sock[i] = 0;
         }
     cp->nodes[i].host[0] = '\0';
-    cp->nodes[i].conn = LINK_CLOSED;
     cp->nodes[i].vcd = 0;                               /* clear VCD table */
     cp->nodes[i].uptr = NULL;
     }

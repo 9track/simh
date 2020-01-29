@@ -116,6 +116,11 @@
 #define CIPPD_OPC       0x10                            /* opcode */
 #define CIPPD_SEQ_CNTRL 0x11                            /* sequence control */
 
+/* CIQBA PPD format - internal */
+
+#define CIPPD_ADDR      0x12                            /* QBus address */
+#define CIPPD_LENGTH    0x16                            /* map length */
+
 /* CIQBA PPD format - block transfers */
 
 #define CIPPD_NAME      0x1A                            /* receive buffer name */
@@ -135,21 +140,23 @@
 
 /* CIQBA specific opcodes */
 
-#define OPC_QUERY       0x00
+#define OPC_QUERY       0x00                            /* watchdog request */
 #define OPC_INIT        0x01
 #define OPC_PROMISC_EN  0x02
 #define OPC_PROMISC_DIS 0x03
-#define OPC_RESET       0x04
-#define OPC_MAP         0x05
-#define OPC_UNMAP       0x06
-#define OPC_QUERY_RSP   0x80
+#define OPC_RESET       0x04                            /* toggle VC state */
+#define OPC_MAP         0x05                            /* map buffer */
+#define OPC_UNMAP       0x06                            /* unmap buffer */
+#define OPC_QUERY_RSP   0x80                            /* watchdog response */
 #define OPC_PROMISC_PKT 0x82
 
 #define IOBA_CI              (IOPAGEBASE + 0xE00)
 #define IOLN_CI              0x80
 
-/* #define PQ_BASE              0x80E1D880 */
-#define PQ_BASE              0x80E1F400
+#define PQ_BASE              0x80E1D880                 /* clustering disbled */
+//#define PQ_BASE              0x80E1F400                 /* clustering enabled */
+
+#define MAX_BMAP        20                              /* max mapped buffers */
 
 typedef struct {
     char *symbol;
@@ -336,6 +343,12 @@ const char *ci_rgd[] = {
     };
 
 typedef struct {
+    uint32 addr;                                        /* QBus address */
+    uint32 length;                                      /* mapped length */
+    uint32 bnam;                                        /* buffer name */
+} CI_MAP;
+
+typedef struct {
     uint32 entries;
     uint16 *ring;
     uint32 ptr;
@@ -355,6 +368,7 @@ NEW_QUEUE (ci_sndl, CIS_SEND_LO_RING_ENTRIES);
 NEW_QUEUE (ci_sndh, CIS_SEND_HI_RING_ENTRIES);
 char ci_sym_text[30];
 t_bool ci_vc_open[32];
+CI_MAP ci_map[MAX_BMAP];
 
 t_stat ci_rd (int32 *data, int32 PA, int32 access);
 t_stat ci_wr (int32 data, int32 PA, int32 access);
@@ -363,6 +377,7 @@ t_stat ciqba_detach (UNIT *uptr);
 t_stat ciqba_svc (UNIT *uptr);
 int32 ci_vtb_rd (int32 pa);
 void ci_vtb_wr (int32 pa, int32 data);
+uint32 ciqba_map_buffer (uint32 bnam, uint32 off);
 t_stat ci_receive_int (CI_PKT *pkt, t_bool internal);
 t_stat ci_svc_queue (CI_QUEUE *queue, uint32 *processed);
 t_stat ci_sw_reset (DEVICE *dptr);
@@ -535,19 +550,19 @@ switch (rg) {
             }
         else if (data & CCR_SEND_HI_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_HI_ATTN\n");
-            sim_activate_abs (&ci_unit[0], 0);
+            sim_activate_abs (&ci_unit[0], 20);
             }
         else if (data & CCR_SEND_LO_ATTN) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_SEND_LO_ATTN\n");
-            sim_activate_abs (&ci_unit[0], 0);
+            sim_activate_abs (&ci_unit[0], 20);
             }
         else if (data & CCR_DISPOSE_AVAIL) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_DISPOSE_AVAIL\n");
-            sim_activate_abs (&ci_unit[0], 0);
+            sim_activate_abs (&ci_unit[0], 20);
             }
         else if (data & CCR_RECEIVE_AVAIL) {
             sim_debug (DBG_REG, &ci_dev, "ci_wr: CCR_RECEIVE_AVAIL\n");
-            sim_activate_abs (&ci_unit[0], 0);
+            sim_activate_abs (&ci_unit[0], 20);
             }
         else {
             // TODO: handle transition back to halted state in vax_ci.c
@@ -606,12 +621,16 @@ switch (rg) {
             rg = rg - CI_SEND_LO_RING;
 //            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndl[%d] = %04X\n", rg, data);
             ci_sndl.ring[rg] = data;
+            if ((rg & 1) && (data & 0x8000))            /* high word, CIQBA owned? */
+                sim_activate_abs (&ci_unit[0], 20);     /* new entry to process */
             break;
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
 //            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndh[%d] = %04X\n", rg, data);
             ci_sndh.ring[rg] = data;
+            if ((rg & 1) && (data & 0x8000))            /* high word, CIQBA owned? */
+                sim_activate_abs (&ci_unit[0], 20);     /* new entry to process */
             }
             break;
         }
@@ -814,14 +833,27 @@ return SCPE_OK;
 t_stat ci_receive_data (UNIT *uptr, CI_PKT *pkt)
 {
 uint32 rbnam, rboff, sboff, rblen, xfrsz;
+uint32 addr = 0;
 CI_PKT blk;
 t_bool last;
 t_stat r;
 
+last = (pkt->data[PPD_FLAGS] & PPD_LP) ? TRUE : FALSE;  /* save last packet flag */
 rbnam = CI_GET32 (pkt->data, PPD_RBNAM);                /* get buffer name */
 rboff = CI_GET32 (pkt->data, PPD_RBOFF);                /* get buffer offset */
+xfrsz = (pkt->length - CI_DATHDR);                      /* payload length */
+
+if (!last)
+    addr = ciqba_map_buffer (rbnam, (rboff + xfrsz));   /* try to map buffer */
+if (addr != 0) {
+    sim_printf ("Found map addr %X for buffer %08X\n", addr, rbnam);
+    rblen = Map_WriteB (addr, xfrsz, &pkt->data[CI_DATHDR]); /* transfer block data directly */
+    if (rblen)
+        sim_printf ("Error transferring data to host memory\n");
+    return SCPE_OK;
+    }
+
 pkt->data[PPD_SWFLAG] = CIPPD_BLOCK;                    /* block transfer */
-last = (pkt->data[PPD_FLAGS] & PPD_LP) ? TRUE : FALSE;  /* save last packet flag */
 pkt->data[PPD_FLAGS] &= ~PPD_LP;                        /* clear last packet flag */
 
 blk.length = PPD_XFRSZ;                                 /* header + transaction ID */
@@ -830,7 +862,6 @@ ci_fmt_receive (&blk);                                  /* convert to CIQBA form
 
 CI_PUT32 (blk.data, CIPPD_NAME, rbnam);
 sboff = 0;
-xfrsz = (pkt->length - CI_DATHDR);                      /* payload length */
 while (xfrsz) {
     rblen = (xfrsz > CIQBA_MAXDAT) ? CIQBA_MAXDAT : xfrsz;
     memcpy (&blk.data[CIPPD_Q22HAN], &pkt->data[(CI_DATHDR + sboff)], rblen);
@@ -841,7 +872,7 @@ while (xfrsz) {
     if ((xfrsz <= CIQBA_MAXDAT) && last)
         blk.data[CIPPD_SEQ_CNTRL] |= CIPPD_LAST;        /* last packet */
     CI_PUT32 (blk.data, CIPPD_OFFSET, rboff);
-    r = ci_receive_int (&blk, TRUE);                    /* pass to system */
+    r = ci_receive_int (&blk, FALSE);                   /* pass to system */
     if (r != SCPE_OK)
         sim_printf ("Failed to receive packet\n");
     xfrsz -= rblen;
@@ -873,8 +904,6 @@ t_stat ci_dispose_int (CI_PKT *pkt, t_bool internal)
 {
 sim_debug (DBG_REG, &ci_dev, "ci_dispose\n");
 ci_csr |= CSR_DISPOSE_ATTN;
-//if (ci_ccr & CCR_ENABLE_INT)
-//    SET_INT (CI);
 pkt->size = 0;
 return ci_enqueue (&ci_dsp, pkt, internal);
 }
@@ -887,10 +916,8 @@ return ci_dispose_int (pkt, FALSE);
 t_stat ci_respond (CI_PKT *pkt)
 {
 sim_debug (DBG_REG, &ci_dev, "ci_respond\n");
-ci_write_packet (pkt, 0x10); // TODO: move header size definitions to vax_ci.h
+ci_write_packet (pkt, PPD_HDR);
 ci_csr |= CSR_DISPOSE_ATTN;
-//if (ci_ccr & CCR_ENABLE_INT)
-//    SET_INT (CI);
 pkt->size = 0;
 return ci_enqueue (&ci_dsp, pkt, FALSE);
 }
@@ -899,15 +926,11 @@ t_stat ci_receive_int (CI_PKT *pkt, t_bool internal)
 {
 t_stat r;
 sim_debug (DBG_REG, &ci_dev, "ci_receive\n");
-if (!internal)
-    ci_fmt_receive (pkt);
 r = ci_dequeue (&ci_rcv, pkt, TRUE);
 if (r != SCPE_OK)
     sim_debug (DBG_REG, &ci_dev, "ci_dequeue failed\n");
 ci_write_packet (pkt, pkt->length);
 ci_csr |= CSR_RECEIVE_ATTN;
-//if (ci_ccr & CCR_ENABLE_INT)
-//    SET_INT (CI);
 return ci_enqueue (&ci_rcv, pkt, internal);
 }
 
@@ -920,7 +943,47 @@ switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by po
     case OPC_DATREC:
         return ci_receive_data (uptr, pkt);
         }
+ci_fmt_receive (pkt);
 return ci_receive_int (pkt, FALSE);
+}
+
+t_stat ciqba_map (CI_PKT *pkt)
+{
+uint32 addr, len, bnam, i;
+
+addr = CI_GET32 (pkt->data, CIPPD_ADDR);
+len = CI_GET32 (pkt->data, CIPPD_LENGTH);
+bnam = CI_GET32 (pkt->data, CIPPD_NAME);
+
+ci_map[0].addr = addr;                                  /* setup map entry */
+ci_map[0].length = len;
+ci_map[0].bnam = bnam;
+#if 0
+for (i = 0; i < MAX_BMAP; i++) {                        /* find free map entry */
+    if (ci_map[i].addr == 0) {
+        ci_map[i].addr = addr;                          /* setup map entry */
+        ci_map[i].length = len;
+        ci_map[i].bnam = bnam;
+        return SCPE_OK;
+        }
+    }
+sim_printf ("CIQBA buffer maps exhausted\n");
+return SCPE_IERR;
+#endif
+}
+
+uint32 ciqba_map_buffer (uint32 bnam, uint32 off)
+{
+uint32 i;
+
+for (i = 0; i < MAX_BMAP; i++) {
+    if (ci_map[i].bnam == bnam) {                       /* buffer name found? */
+        if (off > ci_map[i].length)                     /* buffer length exceeded? */
+            return 0;                                   /* can't map */
+        return ci_map[i].addr;                          /* yes, return QBus address */
+        }
+    }
+return 0;                                               /* no, unmapped transfer */
 }
 
 t_stat ciqba_msg (CI_PKT *pkt)
@@ -973,6 +1036,7 @@ switch (pkt->data[PPD_OPC]) {
 
     case OPC_MAP:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Map\n");
+        ciqba_map (pkt);
         ci_dispose_int (pkt, TRUE);
         break;
 
@@ -1003,7 +1067,6 @@ while (ci_can_enq (&ci_dsp)) {
         break;
         }
     pkt.length = pkt.size;
-//    ci_fmt_send (&pkt);
     sim_debug (DBG_REG, &ci_dev, "Processing packet: type = %d\n", pkt.type);
     // FIXME: Handle status from ci_send_ppd
     if (pkt.type == 1) {
@@ -1028,32 +1091,29 @@ t_stat ciqba_svc (UNIT *uptr)
 CI_PKT pkt;
 t_stat r;
 uint32 processed = 0;
+
 sim_debug (DBG_REG, &ci_dev, "CIQBA Poll\n");
-r = ci_svc_queue (&ci_sndh, &processed);
+r = ci_svc_queue (&ci_sndh, &processed);                /* service high priority queue */
 if (r != SCPE_OK)
     return r;
-if (processed > 0) {
+if (processed > 0)                                      /* any processed? */
     ci_csr |= CSR_SEND_HI_AVAIL;
-//    SET_INT (CI);
-    }
 processed = 0;
-r = ci_svc_queue (&ci_sndl, &processed);
+r = ci_svc_queue (&ci_sndl, &processed);                /* service low priority queue */
 if (r != SCPE_OK)
     return r;
-if (processed > 0) {
+if (processed > 0)                                      /* any processed? */
     ci_csr |= CSR_SEND_LO_AVAIL;
-//    SET_INT (CI);
-    }
-while (ci_can_deq (&ci_rcv)) {
-    r = ci_receive_ppd (uptr, &pkt);
+while (ci_can_deq (&ci_rcv)) {                          /* receive ring available? */
+    r = ci_receive_ppd (uptr, &pkt);                    /* get next packet */
 // TODO: handle errors from ci_receive
     if (r != SCPE_OK)
         break;
-    r = ci_receive (&pkt);
+    r = ci_receive (&pkt);                              /* process packet */
     if (r != SCPE_OK)
         return r;
     };
-if ((ci_csr & CSR_ATTN) && (ci_ccr & CCR_ENABLE_INT))
+if ((ci_csr & CSR_ATTN) && (ci_ccr & CCR_ENABLE_INT))   /* any interrupt, enabled? */
     SET_INT (CI);
 return ci_svc (uptr);
 }
@@ -1102,12 +1162,17 @@ int32 i;
 
 ci_ccr = 0;
 ci_csr = 0;
-ci_rcv.ptr = 0;
+ci_rcv.ptr = 0;                                         /* reset queue pointers */
 ci_dsp.ptr = 0;
 ci_sndl.ptr = 0;
 ci_sndh.ptr = 0;
-for (i = 0; i < 32; i++)
+for (i = 0; i < 32; i++)                                /* all VCs closed */
     ci_vc_open[i] = FALSE;
+for (i = 0; i < MAX_BMAP; i++) {                        /* clear buffer map */
+    ci_map[i].addr = 0;
+    ci_map[i].length = 0;
+    ci_map[i].bnam = 0;
+    }
 CLR_INT (CI);
 return ci_port_reset (dptr);
 }

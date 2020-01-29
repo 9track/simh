@@ -703,13 +703,28 @@ if (bnam < MAX_BUFF) {                                  /* valid name? */
 return SCPE_OK;
 }
 
+t_stat hsc_idrec (CI_PKT *pkt)
+{
+uint32 conid, rspid, port;
+
+port = pkt->data[PPD_PORT];
+conid = CI_GET32 (pkt->data, PPD_LCONID);
+rspid = CI_GET32 (pkt->data, PPD_RSPID);
+if ((conid | rspid) == 0) {                             /* transaction ID = 0? */
+    if (ci_check_vc (&hsc_unit[0], port))               /* VC open? */
+        ci_close_vc (&hsc_unit[0], port);               /* VC failed */
+    hsc_state[port] = STATE_IDREC;
+    return hsc_start (pkt, DG_START);                   /* send START */
+    }
+return SCPE_OK;
+}
+
 /* Process received PPD */
 
 t_stat hsc_ppd (CI_PKT *pkt)
 {
 uint32 opcode = pkt->data[PPD_OPC];
 uint32 port = pkt->data[PPD_PORT];
-uint32 conid, rspid;
 
 switch (opcode) {
 
@@ -723,13 +738,7 @@ switch (opcode) {
         return hsc_reqrec (pkt);
         
     case OPC_IDREC:
-        conid = CI_GET32 (pkt->data, PPD_LCONID);
-        rspid = CI_GET32 (pkt->data, PPD_RSPID);
-        if ((conid | rspid) == 0) {                     /* transaction ID = 0? */
-            hsc_state[port] = STATE_IDREC;
-            return hsc_start (pkt, DG_START);           /* yes, send START */
-            }
-        break;
+        return hsc_idrec (pkt);
 
     case OPC_DATREC:
         return hsc_datrec (pkt);
@@ -737,7 +746,6 @@ switch (opcode) {
     case OPC_CNFREC:
         return hsc_cnfrec (pkt);
         }
-return SCPE_OK;
 }
 
 /* Clock service (roughly once per second) */
@@ -750,14 +758,12 @@ uint32 i;
 for (i = 0; i < CI_MAX_NODES; i++) {
     if (i == hsc_unit[0].ci_node)                       /* local node? */
         continue;                                       /* yes, skip */
-    if (hsc_state[i] == STATE_CLOSED) {
-        pkt.length = PPD_HDR;
-        pkt.data[PPD_PORT] = i;
-        pkt.data[PPD_STATUS] = 0;
-        pkt.data[PPD_FLAGS] = (hsc_path << PPD_V_PS);
-        pkt.data[PPD_OPC] = OPC_REQID;
-        ci_send_ppd (&hsc_unit[0], &pkt);
-        }
+    pkt.length = PPD_HDR;
+    pkt.data[PPD_PORT] = i;
+    pkt.data[PPD_STATUS] = 0;
+    pkt.data[PPD_FLAGS] = (hsc_path << PPD_V_PS);
+    pkt.data[PPD_OPC] = OPC_REQID;
+    ci_send_ppd (&hsc_unit[0], &pkt);
     }
 if (hsc_path == PPD_PS0)                                /* switch path */
     hsc_path = PPD_PS1;

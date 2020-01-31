@@ -67,9 +67,11 @@ typedef struct {
 
 /* Virtual circuit states */
 
-#define STATE_CLOSED    0
-#define STATE_IDREC     1
-#define STATE_VCOPEN    2
+#define STATE_CLOSED    0                               /* VC closed */
+#define STATE_IDREC     1                               /* remote port ID received */
+#define STATE_STSENT    2                               /* START sent */
+#define STATE_STRECV    3                               /* START received */
+#define STATE_VCOPEN    4                               /* VC open */
 
 uint32 hsc_sysid = 1;
 char hsc_name[6];
@@ -82,6 +84,7 @@ extern int32 tmxr_poll;
 
 t_stat hsc_scsdir (uint32 conid, CI_PKT *pkt);
 t_stat hsc_mscp (uint32 conid, CI_PKT *pkt);
+t_stat hsc_reqid (CI_PKT *pkt);
 t_stat hsc_start (CI_PKT *pkt, uint32 dg_type);
 t_stat hsc_stack (CI_PKT *pkt);
 t_stat hsc_show_sysid (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
@@ -164,6 +167,17 @@ if (conid < MAX_CONN) {                                 /* valid? */
 return NULL;
 }
 
+void hsc_fail_vc (uint32 port)
+{
+uint32 i;
+
+for (i = 0; i < MAX_CONN; i++) {
+    if (hsc_conn[i].port == port)
+        memset (&hsc_conn[i], 0, sizeof (CONN));
+    }
+ci_close_vc (&hsc_unit[0], port);
+}
+
 /* Find a SYSAP with the given name */
 
 SYSAP* hsc_getsysap (char *name)
@@ -232,6 +246,12 @@ t_stat hsc_mscp_done (MSC *cp, uint16 rf_pkt)
 CONN *conn = hsc_getconn (cp->cid);
 CI_PKT pkt;
 
+rf_enqh (cp, &cp->freq, rf_pkt);                        /* pkt is free */
+cp->pbsy = cp->pbsy - 1;                                /* decr busy cnt */
+if (cp->pbsy == 0)                                      /* idle? strt hst tmr */
+    cp->hat = cp->htmo;
+if (conn == NULL)
+    return SCPE_OK;
 pkt.length = (SCS_APPL + cp->pak[rf_pkt].d[UQ_HLNT]);
 pkt.data[PPD_PORT] = conn->port;                        /* dest port */
 pkt.data[PPD_STATUS] = 0;                               /* status */
@@ -245,10 +265,6 @@ conn->credits--;
 memcpy (&pkt.data[SCS_APPL + UQ_HDR_OFF], cp->pak[rf_pkt].d, RF_PKT_SIZE); /* application message */
 CI_PUT32 (pkt.data, SCS_DSTCON, conn->conid);           /* destination connection ID */
 CI_PUT32 (pkt.data, SCS_SRCCON, cp->cid);               /* source connection ID */
-rf_enqh (cp, &cp->freq, rf_pkt);                        /* pkt is free */
-cp->pbsy = cp->pbsy - 1;                                /* decr busy cnt */
-if (cp->pbsy == 0)                                      /* idle? strt hst tmr */
-    cp->hat = cp->htmo;
 return ci_send_ppd (&hsc_unit[0], &pkt);
 }
 
@@ -428,16 +444,34 @@ uint32 dg_type = CI_GET16 (pkt->data, PPD_MTYPE);
 switch (dg_type) {
 
     case DG_START:
-        return hsc_start (pkt, DG_STACK);               /* send STACK */
+        if (hsc_state[port] < STATE_STRECV)
+            hsc_state[port] = STATE_STRECV;
+        if (hsc_state[port] == STATE_VCOPEN) {          /* VC already open? */
+            hsc_state[port] = STATE_IDREC;
+            hsc_fail_vc (port);                         /* close VC and start again */
+            }
+        if (hsc_state[port] >= STATE_IDREC)             /* got remote port ID? */
+            return hsc_start (pkt, DG_STACK);           /* send STACK */
+        else
+            return hsc_reqid (pkt);                     /* request remote port ID */
+        break;
 
     case DG_STACK:
-        hsc_state[port] = STATE_VCOPEN;                 /* open VC */
-        ci_open_vc (&hsc_unit[0], pkt->data[PPD_PORT]);
+        if (hsc_state[port] < STATE_STSENT)
+            return SCPE_OK;
+        if (hsc_state[port] < STATE_VCOPEN) {
+            hsc_state[port] = STATE_VCOPEN;             /* open VC */
+            ci_open_vc (&hsc_unit[0], port);
+            }
         return hsc_stack (pkt);                         /* send ACK */
 
     case DG_ACK:
-        hsc_state[port] = STATE_VCOPEN;                 /* open VC */
-        ci_open_vc (&hsc_unit[0], pkt->data[PPD_PORT]);
+        if (hsc_state[port] < STATE_STSENT)
+            return SCPE_OK;
+        if (hsc_state[port] < STATE_VCOPEN) {
+            hsc_state[port] = STATE_VCOPEN;             /* open VC */
+            ci_open_vc (&hsc_unit[0], port);
+            }
         break;
 
     case DG_SCSMSG:
@@ -445,7 +479,7 @@ switch (dg_type) {
 
     case DG_HOSTSHUT:
         hsc_state[port] = STATE_CLOSED;                 /* close VC */
-        ci_close_vc (&hsc_unit[0], pkt->data[PPD_PORT]);
+        hsc_fail_vc (port);
         break;
 
     default:
@@ -474,6 +508,16 @@ pkt->data[0x24] = hsc_unit[0].ci_node;                  /* resetting port */
 // TODO: should also respond when disabled?
 pkt->data[0x25] = 0x4;                                  /* port state (maint = 0, state = enabled) */
 pkt->length = 0x26;  // TODO: check length, add #define
+return ci_send_ppd (&hsc_unit[0], pkt);
+}
+
+/* Request remote port ID */
+
+t_stat hsc_reqid (CI_PKT *pkt)
+{
+pkt->length = PPD_HDR;
+pkt->data[PPD_STATUS] = 0;
+pkt->data[PPD_OPC] = OPC_REQID;
 return ci_send_ppd (&hsc_unit[0], pkt);
 }
 
@@ -592,6 +636,7 @@ while (xfrsz) {
     memcpy (&pkt.data[CI_DATHDR], &bdt->buf[bdt->boff], len);
     r = ci_send_ppd (&hsc_unit[0], &pkt);
     if (r != SCPE_OK) {
+        sim_printf ("HSC stalled during SNDDAT operation\n");
         sim_activate (bdt->uptr, tmxr_poll);            /* retry */
         return -1;                                      /* FIXME: handle errors other than buffer full */
         }
@@ -650,12 +695,13 @@ pkt.data[PPD_FLAGS] = 0;                                /* flags */
 CI_PUT32 (pkt.data, PPD_LCONID, bd[2]);                 /* local connection ID */
 CI_PUT32 (pkt.data, PPD_RSPID, i);                      /* local response ID */
 CI_PUT32 (pkt.data, PPD_XFRSZ, xfrsz);
-CI_PUT32 (pkt.data, PPD_SBNAM, i);
-CI_PUT32 (pkt.data, PPD_SBOFF, 0);
-CI_PUT32 (pkt.data, PPD_RBNAM, bd[1]);
-CI_PUT32 (pkt.data, PPD_RBOFF, bd[0]);
+CI_PUT32 (pkt.data, PPD_SBNAM, bd[1]);
+CI_PUT32 (pkt.data, PPD_SBOFF, bd[0]);
+CI_PUT32 (pkt.data, PPD_RBNAM, i);
+CI_PUT32 (pkt.data, PPD_RBOFF, 0);
 r = ci_send_ppd (&hsc_unit[0], &pkt);
 if (r != SCPE_OK) {
+    sim_printf ("HSC stalled during REQDAT operation\n");
     sim_activate (bdt->uptr, tmxr_poll);                /* retry */
     return -1;                                          /* FIXME: handle errors other than buffer full */
     }
@@ -681,9 +727,12 @@ if (bnam < MAX_BUFF) {                                  /* valid name? */
     }
 
 if (pkt->data[PPD_FLAGS] & PPD_LP) {                    /* last packet? */
+//FIXME: Should only send RETCNF for SNDDATREC?
+#if 0
     pkt->length = CI_DATHDR;
     pkt->data[PPD_OPC] = OPC_RETCNF;                    /* send confirmation */
     ci_send_ppd (&hsc_unit[0], pkt);
+#endif
     sim_activate (bdt->uptr, 0);                        /* xfer done, reactivate */
     }
 return SCPE_OK;
@@ -710,11 +759,16 @@ uint32 conid, rspid, port;
 port = pkt->data[PPD_PORT];
 conid = CI_GET32 (pkt->data, PPD_LCONID);
 rspid = CI_GET32 (pkt->data, PPD_RSPID);
-if ((conid | rspid) == 0) {                             /* transaction ID = 0? */
-    if (ci_check_vc (&hsc_unit[0], port))               /* VC open? */
-        ci_close_vc (&hsc_unit[0], port);               /* VC failed */
+if (hsc_state[port] < STATE_IDREC)
     hsc_state[port] = STATE_IDREC;
-    return hsc_start (pkt, DG_START);                   /* send START */
+if ((conid | rspid) == 0) {                             /* transaction ID = 0? */
+    if (ci_check_vc (&hsc_unit[0], port)) {             /* VC open? */
+        hsc_state[port] = STATE_IDREC;
+        hsc_fail_vc (port);                             /* VC failed */
+        }
+    if (hsc_state[port] < STATE_STSENT)  
+        hsc_state[port] = STATE_STSENT;
+    return hsc_start (pkt, DG_START);               /* send START */
     }
 return SCPE_OK;
 }
@@ -758,12 +812,9 @@ uint32 i;
 for (i = 0; i < CI_MAX_NODES; i++) {
     if (i == hsc_unit[0].ci_node)                       /* local node? */
         continue;                                       /* yes, skip */
-    pkt.length = PPD_HDR;
     pkt.data[PPD_PORT] = i;
-    pkt.data[PPD_STATUS] = 0;
     pkt.data[PPD_FLAGS] = (hsc_path << PPD_V_PS);
-    pkt.data[PPD_OPC] = OPC_REQID;
-    ci_send_ppd (&hsc_unit[0], &pkt);
+    hsc_reqid (&pkt);
     }
 if (hsc_path == PPD_PS0)                                /* switch path */
     hsc_path = PPD_PS1;

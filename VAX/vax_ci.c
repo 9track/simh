@@ -138,7 +138,7 @@ typedef struct {
   CI_ITEM    *item;
 } CI_QUE;
 
-#define CI_QUE_MAX           100                        /* message queue array */
+#define CI_QUE_MAX           200                        /* message queue array */
 
 typedef struct {
     uint32    conn;                                     /* link state */

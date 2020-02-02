@@ -370,14 +370,18 @@ t_stat ci_send_data (UNIT *uptr, CI_PKT *pkt)
 uint32 data_len, total_data_len;
 uint16 snd_name, page_offset;
 uint32 snd_offset, rec_offset, data_pte;
+uint16 flags, key;
 t_stat r;
 
 total_data_len = CI_GET32 (pkt->data, PPD_XFRSZ);
 snd_name = CI_GET16 (pkt->data, PPD_SBNAM);             /* Get BDT table offset */
 snd_offset = CI_GET32 (pkt->data, PPD_SBOFF);           /* Get data starting offset */
 rec_offset = CI_GET32 (pkt->data, PPD_RBOFF);           /* Get data starting offset */
+
+flags = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_FLAGS_OF, L_WORD);
+key = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_KEY_OF, L_WORD);
 data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
-page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN), L_WORD) & 0x1FF;
+page_offset = flags & BD_M_OFF;
 
 while (total_data_len > 0) {
     if (total_data_len > CI_MAXDAT)
@@ -419,7 +423,6 @@ flags = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_FLAGS_OF, L_WORD
 key = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_KEY_OF, L_WORD);
 data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
 page_offset = flags & BD_M_OFF;
-//page_offset = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN), L_WORD) & 0x1FF;
 
 if (rec_key != key)
     sim_printf ("CI: wrong buffer key\n");
@@ -717,5 +720,6 @@ ci_bdt_va = 0;
 ci_bdt_len = 0;
 ci_ppr |= ((0x3f9 & PPR_M_IBLEN) << PPR_V_IBLEN);       /* TODO: set internal buffer length */
 gvp_tlb_reset (&ci_mmu);                                /* reset MMU */
+ci_port_reset (dptr);
 return SCPE_OK;
 }

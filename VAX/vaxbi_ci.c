@@ -32,7 +32,6 @@
 
 /* CIBCA Registers */
 
-#define CNFGR_OF        0x0
 #define PMCSR_OF        0x401                           /* port maintenanace CSR */
 #define MADR_OF         0x402                           /* maintenanace address */
 #define MDATR_OF        0x403                           /* maintenanace data */
@@ -107,7 +106,7 @@
 
 #define PORT_UCODERUN   1                               /* microcode running */
 
-BIIC uba_biic;                                          /* BIIC standard registers */
+BIIC ci_biic;                                           /* BIIC standard registers */
 uint32 ci_pmcsr;                                        /* port maintenance csr */
 uint32 ci_madr;                                         /* mainteneance addr reg */
 uint32 ci_mdatr[8192];                                  /* maintenanace data reg */
@@ -133,7 +132,6 @@ DIB ci_dib = { TR_CI, 0, &ci_rdreg, &ci_wrreg, 0, NVCL (CI) };
 UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
 
 REG ci_reg[] = {
-    { HRDATA (CNFGR, ci_cnfgr, 32) },
     { HRDATA (PMCSR, ci_pmcsr, 32) },
     { HRDATA (MADR, ci_madr, 32) },
     { HRDATA (MDATR, ci_mdatr, 32) },
@@ -202,17 +200,18 @@ REGMAP ci_regmap[] = {
 t_stat ci_rdreg (int32 *val, int32 pa, int32 lnt)
 {
 int32 rg;
+UNIT *uptr = &ci_unit;
 REGMAP *p;
 
 rg = NEXUS_GETOFS (pa);                                 /* get offset */
 
-if ((rg >= 0x400) && (ci_state < PORT_UCODERUN)) {      /* microcode not running? */
+if ((rg >= 0x400) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
     *val = ci_local_store[(rg - 0x400)];
     return SCPE_OK;
     }
 for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port register */
     if (p->offset == rg)                                /* mapped? */
-        return ci_dec_rd (val, p->rg, lnt);
+        return ci_dec_rd (uptr, val, p->rg, lnt);
     }
 switch (rg) {                                           /* CIBCA specific registers */
 
@@ -245,7 +244,7 @@ switch (rg) {                                           /* CIBCA specific regist
         break;
 
     case PMCSR_OF:
-        if (ci_state > PORT_UNINIT)
+        if (uptr->ci_state > PORT_UNINIT)
             ci_pmcsr = ci_pmcsr & ~PMCSR_UI;
         else
             ci_pmcsr = ci_pmcsr | PMCSR_UI;
@@ -277,20 +276,18 @@ return SCPE_OK;
 t_stat ci_wrreg (int32 val, int32 pa, int32 lnt)
 {
 int32 rg;
-int32 src_ipa, src_ipp;
-t_stat r;
 UNIT *uptr = &ci_unit;
 REGMAP *p;
 
 rg = NEXUS_GETOFS (pa);                                 /* get offset */
 
-if ((rg >= 0x400) && (ci_state < PORT_UCODERUN)) {      /* microcode not running? */
+if ((rg >= 0x400) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
     ci_local_store[(rg - 0x400)] = val;
     return SCPE_OK;
     }
 for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port register */
     if (p->offset == rg)                                /* mapped? */
-        return ci_dec_wr (val, p->rg, lnt);
+        return ci_dec_wr (uptr, val, p->rg, lnt);
     }
 switch (rg) {                                           /* case on type */
 
@@ -327,7 +324,7 @@ switch (rg) {                                           /* case on type */
         ci_pmcsr &= ~(val & PMCSR_W1C);                 /* Clear W1C bits */
         ci_pmcsr = (ci_pmcsr & ~PMCSR_RW) | (val & PMCSR_RW); /* Set RW bits */
 
-        if (ci_state > PORT_UNINIT)
+        if (uptr->ci_state > PORT_UNINIT)
             ci_pmcsr = ci_pmcsr & ~PMCSR_UI;
         else
             ci_pmcsr = ci_pmcsr | PMCSR_UI;
@@ -339,8 +336,8 @@ switch (rg) {                                           /* case on type */
         if (val & PMCSR_MIF)                            /* interrupt W1C */
             ci_clr_int();
 
-        if ((val & PMCSR_PSA) && (ci_state < PORT_UCODERUN)) {
-            ci_set_state (PORT_UCODERUN);               /* Start microcode */
+        if ((val & PMCSR_PSA) && (uptr->ci_state < PORT_UCODERUN)) {
+            ci_set_state (uptr, PORT_UCODERUN);         /* Start microcode */
             }
         break;
 
@@ -380,7 +377,6 @@ return;
 t_stat ci_reset (DEVICE *dptr)
 {
 int32 i;
-t_stat r;
 
 ci_biic.csr = (1u << BICSR_V_IF) | BICSR_STS | (TR_CI & BICSR_NODE);
 ci_biic.ber = 0;
@@ -391,7 +387,6 @@ ci_pmcsr = PMCSR_UI;
 ci_madr = 0;
 for (i = 0; i < 8192; i++)
     ci_mdatr[i] = 0;
-ci_port_reset (dptr);
 ci_dec_reset (dptr);
 return SCPE_OK;
 }

@@ -340,7 +340,6 @@ ci_pmcsr = PMCSR_UI;
 ci_madr = 0;
 for (i = 0; i < 8192; i++)
     ci_mdatr[i] = 0;
-ci_port_reset (dptr);
 ci_dec_reset (dptr);
 return SCPE_OK;
 }

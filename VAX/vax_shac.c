@@ -28,6 +28,7 @@
 
 #include "vax_defs.h"
 #include "vax_ci.h"
+#include "vax_ci_dec.h"
 
 /* SHAC Registers */
 
@@ -85,23 +86,23 @@ REG shac_reg[] = {
 MTAB shac_mod[] = {
     { MTAB_XTD|MTAB_VDV, 0, "NODE", "NODE",
       &ci_set_node, &ci_show_node },
-    { MTAB_XTD|MTAB_VDV, 0, "PORT", "PORT",
-      &ci_set_tcp, &ci_show_tcp },
+    { MTAB_XTD|MTAB_VDV, 0, "GROUP", "GROUP",
+      &ci_set_group, &ci_show_group },
     { 0 }
     };
 
 DEBTAB shac_debug[] = {
-    {"REG",    DBG_REG},
-    {"WARN",   DBG_WRN},
-    {"REQID",  DBG_REQID},
-    {"SCSDG",  DBG_SCSDG},
-    {"SCSMSG", DBG_SCSMSG},
-    {"PPDDG",  DBG_PPDDG},
-    {"BLKTF",  DBG_BLKTF},
-    {"LCMD",   DBG_LCMD},
-    {"CONN",   DBG_CONN},
-    {"TRACE",  DBG_TRC},
-    {0}
+    { "REG",    DBG_REG },
+    { "WARN",   DBG_WRN },
+    { "REQID",  DBG_REQID },
+    { "SCSDG",  DBG_SCSDG },
+    { "SCSMSG", DBG_SCSMSG },
+    { "PPDDG",  DBG_PPDDG },
+    { "BLKTF",  DBG_BLKTF },
+    { "LCMD",   DBG_LCMD },
+    { "CONN",   DBG_CONN },
+    { "TRACE",  DBG_TRC },
+    { 0 }
 };
 
 DEVICE shac_dev = {
@@ -109,7 +110,7 @@ DEVICE shac_dev = {
     1, 0, 0, 0, 0, 0,
     NULL, NULL, &ci_reset,
     NULL, &ci_attach, &ci_detach,
-    NULL, DEV_DEBUG, 0,
+    NULL, DEV_DEBUG | DEV_CI, 0,
     ci_debug, 0, 0
     };
 
@@ -143,7 +144,7 @@ REGMAP *p;
 
 for (p = &shac_regmap[0]; p->addr != 0; p++) {          /* check for port register */
     if (p->addr == rg) {                                /* mapped? */
-        val = ci_rdport (val, p->rg, lnt);
+        val = ci_dec_rd (&shac_unit, val, p->rg, lnt);
         if ((p->rg == CI_PQBBR) && (val == 0))          /* PQBBR and not set? */
             break;                                      /* yes, return version instead */
         else
@@ -176,14 +177,14 @@ REGMAP *p;
 
 for (p = &shac_regmap[0]; p->addr != 0; p++) {          /* check for port register */
     if (p->addr == rg)                                  /* mapped? */
-        return ci_wrport (val, p->rg, lnt);
+        return ci_dec_wr (&shac_unit, val, p->rg, lnt);
     }
 switch (rg) {
 
     case SSWCR_OF:
         sim_debug (DBG_REG, &shac_dev, "SSWCR wr: %08X at %08X\n", val, fault_PC);
         if (val & 0xFFFFFFFF) {                         /* Maintenance Initialise */
-            ci_reset (&shac_dev);
+            shac_reset (&shac_dev);
             break;
         }
         break;
@@ -198,13 +199,13 @@ switch (rg) {
         }
 }
 
-void shac_set_int ()
+void ci_set_int ()
 {
 shac_int = 1;
 return;
 }
 
-void shac_clr_int ()
+void ci_clr_int ()
 {
 shac_int = 0;
 return;
@@ -217,5 +218,6 @@ t_stat shac_reset (DEVICE *dptr)
 ci_ppr |= ((0x1010 & PPR_M_IBLEN) << PPR_V_IBLEN);  /* SHAC: set internal buffer length */
 sh_shma = 0;
 shac_int = 0;
+ci_dec_reset (dptr);
 return SCPE_OK;
 }

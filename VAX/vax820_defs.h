@@ -87,6 +87,7 @@
 #define TR_MCTL0        2
 #define TR_MCTL1        3
 #define TR_UBA          4
+#define TR_CI           5
 #define NEXUS_HLVL      (IPL_HMAX - IPL_HMIN + 1)
 #define SCB_NEXUS       0x100                           /* nexus intr base */
 
@@ -105,6 +106,7 @@
 #define IPL_MCTL0       (0x15 - IPL_HMIN)
 #define IPL_MCTL1       (0x15 - IPL_HMIN)
 #define IPL_UBA         (0x15 - IPL_HMIN)
+#define IPL_CI          (0x15 - IPL_HMIN)
 
 /* Nexus interrupt macros */
 
@@ -260,10 +262,12 @@ extern t_stat cpu_show_memory (FILE* st, UNIT* uptr, int32 val, CONST void* desc
 #define DEV_V_UBUS      (DEV_V_UF + 0)                  /* Unibus */
 #define DEV_V_MBUS      (DEV_V_UF + 1)                  /* Massbus */
 #define DEV_V_NEXUS     (DEV_V_UF + 2)                  /* Nexus */
-#define DEV_V_FFUF      (DEV_V_UF + 3)                  /* first free flag */
+#define DEV_V_CI        (DEV_V_UF + 3)                  /* CI */
+#define DEV_V_FFUF      (DEV_V_UF + 4)                  /* first free flag */
 #define DEV_UBUS        (1u << DEV_V_UBUS)
 #define DEV_MBUS        (1u << DEV_V_MBUS)
 #define DEV_NEXUS       (1u << DEV_V_NEXUS)
+#define DEV_CI          (1u << DEV_V_CI)
 #define DEV_QBUS        (0)
 #define DEV_Q18         (0)
 

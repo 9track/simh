@@ -125,11 +125,11 @@
 
 #define CIPPD_NAME      0x1A                            /* receive buffer name */
 #define CIPPD_OFFSET    0x1E                            /* receive buffer offset */
-#define CIPPD_Q22HAN    0x22                            /* ? */
-#define CIPPD_BCNT      0x26                            /* byte count? */
-#define CIPPD_TLOFF     0x2A                            /* xfer local offset? */
+#define CIPPD_Q22HAN    0x22                            /* QBus address */
+#define CIPPD_BCNT      0x26                            /* transfer length */
+#define CIPPD_TLOFF     0x2A                            /* transfer local offset? */
 #define CIPPD_SVAPTE    0x2F                            /* system VA page table entry */
-#define CIPPD_BLEFT     0x33                            /* bytes left */
+#define CIPPD_BLEFT     0x33                            /* transfer bytes remaining */
 #define CIPPD_SMAPR     0x37                            /* start map register */
 #define CIPPD_NMAPR     0x39                            /* number of map registers */
 
@@ -367,7 +367,6 @@ NEW_QUEUE (ci_dsp, CIS_DISPOSE_RING_ENTRIES);
 NEW_QUEUE (ci_sndl, CIS_SEND_LO_RING_ENTRIES);
 NEW_QUEUE (ci_sndh, CIS_SEND_HI_RING_ENTRIES);
 char ci_sym_text[30];
-t_bool ci_vc_open[32];
 CI_MAP ci_map[MAX_BMAP];
 
 t_stat ci_rd (int32 *data, int32 PA, int32 access);
@@ -377,7 +376,7 @@ t_stat ciqba_detach (UNIT *uptr);
 t_stat ciqba_svc (UNIT *uptr);
 int32 ci_vtb_rd (int32 pa);
 void ci_vtb_wr (int32 pa, int32 data);
-uint32 ciqba_map_buffer (uint32 bnam, uint32 off);
+uint32 ciqba_map_buffer (uint32 bnam, uint32 off, uint32 len);
 t_stat ci_receive_int (CI_PKT *pkt, t_bool internal);
 t_stat ci_svc_queue (CI_QUEUE *queue, uint32 *processed);
 t_stat ci_sw_reset (DEVICE *dptr);
@@ -489,25 +488,21 @@ switch (rg) {
         if (rg >= CI_RECEIVE_RING) {
             rg = rg - CI_RECEIVE_RING;
             *data = ci_rcv.ring[rg];
-//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_rcv[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_DISPOSE_RING) {
             rg = rg - CI_DISPOSE_RING;
             *data = ci_dsp.ring[rg];
-//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_dsp[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_SEND_LO_RING) {
             rg = rg - CI_SEND_LO_RING;
             *data = ci_sndl.ring[rg];
-//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndl[%d] = %04X\n", rg, *data);
             break;
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
             *data = ci_sndh.ring[rg];
-//            sim_debug (DBG_REG, &ci_dev, "ci_rd: ci_sndh[%d] = %04X\n", rg, *data);
             }
             break;
         }
@@ -607,19 +602,16 @@ switch (rg) {
     default:
         if (rg >= CI_RECEIVE_RING) {
             rg = rg - CI_RECEIVE_RING;
-//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_rcv[%d] = %04X\n", rg, data);
             ci_rcv.ring[rg] = data;
             break;
             }
         if (rg >= CI_DISPOSE_RING) {
             rg = rg - CI_DISPOSE_RING;
-//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_dsp[%d] = %04X\n", rg, data);
             ci_dsp.ring[rg] = data;
             break;
             }
         if (rg >= CI_SEND_LO_RING) {
             rg = rg - CI_SEND_LO_RING;
-//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndl[%d] = %04X\n", rg, data);
             ci_sndl.ring[rg] = data;
             if ((rg & 1) && (data & 0x8000))            /* high word, CIQBA owned? */
                 sim_activate_abs (&ci_unit[0], 20);     /* new entry to process */
@@ -627,7 +619,6 @@ switch (rg) {
             }
         if (rg >= CI_SEND_HI_RING) {
             rg = rg - CI_SEND_HI_RING;
-//            sim_debug (DBG_REG, &ci_dev, "ci_wr: ci_sndh[%d] = %04X\n", rg, data);
             ci_sndh.ring[rg] = data;
             if ((rg & 1) && (data & 0x8000))            /* high word, CIQBA owned? */
                 sim_activate_abs (&ci_unit[0], 20);     /* new entry to process */
@@ -820,15 +811,105 @@ for (i = PPD_LENGTH; i < pkt->length - 2; i++)
 pkt->length = pkt->length - 2;
 }
 
-t_stat ci_send_data (UNIT *uptr, CI_PKT *pkt)
+#if 0
+t_stat ci_send_data_dma (UNIT *uptr, CI_PKT *pkt)
 {
-CI_PKT *blk;
+uint32 sboff, rboff, rbnam, addr, xfrsz, len, r;
+CI_PKT blk;
 
+memcpy (blk.data, pkt->data, PPD_XFRSZ);                /* copy header */
 
+sbnam = CI_GET32 (pkt->data, PPD_SBNAM);
+sboff = CI_GET32 (pkt->data, PPD_SBOFF);
+
+addr = ciqba_map_buffer (sbnam, sboff, xfrsz);          /* try to map buffer */
+
+addr = CI_GET32 (pkt->data, CIPPD_Q22HAN);
+xfrsz = CI_GET32 (pkt->data, CIPPD_BLEFT);
+len = CI_GET32 (pkt->data, CIPPD_BCNT);
+
+CI_PUT32 (blk.data, PPD_SBNAM, 0);
+CI_PUT32 (blk.data, PPD_RBNAM, rbnam);
+
+sboff = 0;
+while (xfrsz) {
+    len = (xfrsz > CI_MAXDAT) ? CI_MAXDAT : xfrsz;
+    blk.length = len + CI_DATHDR;
+    CI_PUT32 (blk.data, PPD_XFRSZ, xfrsz);
+    CI_PUT32 (blk.data, PPD_SBOFF, sboff);
+    CI_PUT32 (blk.data, PPD_RBOFF, rboff);
+xfrsz -= len;
+    if (xfrsz == 0)
+        blk.data[PPD_FLAGS] |= PPD_LP;                  /* last packet */
+    r = Map_ReadB (addr + sboff, len, &blk.data[CI_DATHDR]);
+    if (rblen)
+        sim_printf ("Error transferring data from host memory\n");
+    r = ci_send_ppd (&ci_unit[0], &blk);
+    if (r != SCPE_OK)
+        sim_printf ("CIQBA send data stalled\n");
+    sboff += len;
+    rboff += len;
+    xfrsz -= len;
+    }
+//pkt->data[PPD_FLAGS] |= PPD_LP;
+CI_PUT32 (pkt->data, CIPPD_BLEFT, 0);
 return SCPE_OK;
 }
+#endif
 
-#define CIQBA_MAXDAT  512
+t_stat ci_send_data (UNIT *uptr, CI_PKT *pkt)
+{
+uint32 sboff, rboff, rbnam, addr, xfrsz, len, r;
+CI_PKT blk;
+
+blk.length = PPD_XFRSZ;                                 /* header + transaction ID */
+memcpy (blk.data, pkt->data, PPD_XFRSZ);                /* copy header */
+ci_fmt_send (&blk);                                     /* convert to CI format */
+
+rbnam = CI_GET32 (pkt->data, CIPPD_NAME);
+rboff = CI_GET32 (pkt->data, CIPPD_OFFSET);
+
+if ((pkt->data[PPD_SWFLAG] & CIPPD_BLOCK) == 0) {
+//    2a  3c
+//    218  22c
+    xfrsz = CI_GET16 (pkt->data, PPD_LENGTH) - 0x18;
+    memcpy (&blk.data[CI_DATHDR], &pkt->data[CIPPD_Q22HAN], xfrsz);
+    len = xfrsz;
+    }
+else {
+    addr = CI_GET32 (pkt->data, CIPPD_Q22HAN);
+    xfrsz = CI_GET32 (pkt->data, CIPPD_BLEFT);
+    len = CI_GET32 (pkt->data, CIPPD_BCNT);
+    }
+
+CI_PUT32 (blk.data, PPD_SBNAM, 0);
+CI_PUT32 (blk.data, PPD_RBNAM, rbnam);
+
+sboff = 0;
+blk.length = len + CI_DATHDR;
+CI_PUT32 (blk.data, PPD_XFRSZ, xfrsz);
+CI_PUT32 (blk.data, PPD_SBOFF, sboff);
+CI_PUT32 (blk.data, PPD_RBOFF, rboff);
+
+if ((pkt->data[PPD_SWFLAG] & CIPPD_BLOCK) == 0) {
+    r = ci_send_ppd (&ci_unit[0], &blk);
+    if (r != SCPE_OK)
+        sim_printf ("CIQBA send data stalled\n");
+    return SCPE_OK;
+    }
+
+xfrsz -= len;
+if (xfrsz == 0)
+    blk.data[PPD_FLAGS] |= PPD_LP;                  /* last packet */
+r = Map_ReadB (addr + sboff, len, &blk.data[CI_DATHDR]);
+if (r)
+    sim_printf ("Error transferring data from host memory\n");
+r = ci_send_ppd (&ci_unit[0], &blk);
+if (r != SCPE_OK)
+    sim_printf ("CIQBA send data stalled\n");
+CI_PUT32 (pkt->data, CIPPD_BLEFT, 0);
+return SCPE_OK;
+}
 
 t_stat ci_receive_data (UNIT *uptr, CI_PKT *pkt)
 {
@@ -844,7 +925,7 @@ rboff = CI_GET32 (pkt->data, PPD_RBOFF);                /* get buffer offset */
 xfrsz = (pkt->length - CI_DATHDR);                      /* payload length */
 
 if (!last)
-    addr = ciqba_map_buffer (rbnam, (rboff + xfrsz));   /* try to map buffer */
+    addr = ciqba_map_buffer (rbnam, rboff, xfrsz);      /* try to map buffer */
 if (addr != 0) {
     sim_printf ("Found map addr %X for buffer %08X\n", addr, rbnam);
     rblen = Map_WriteB (addr, xfrsz, &pkt->data[CI_DATHDR]); /* transfer block data directly */
@@ -863,13 +944,13 @@ ci_fmt_receive (&blk);                                  /* convert to CIQBA form
 CI_PUT32 (blk.data, CIPPD_NAME, rbnam);
 sboff = 0;
 while (xfrsz) {
-    rblen = (xfrsz > CIQBA_MAXDAT) ? CIQBA_MAXDAT : xfrsz;
+    rblen = (xfrsz > CI_MAXDAT) ? CI_MAXDAT : xfrsz;
     memcpy (&blk.data[CIPPD_Q22HAN], &pkt->data[(CI_DATHDR + sboff)], rblen);
     blk.length = rblen + 0x17;                          // FIXME: Why 0x17?
     blk.data[CIPPD_LEN_HI] = (blk.length >> 8) & 0xFF;
     blk.data[CIPPD_LEN_LO] = blk.length & 0xFF;
     blk.length = rblen + CIPPD_Q22HAN;                  /* set actual length */
-    if ((xfrsz <= CIQBA_MAXDAT) && last)
+    if ((xfrsz <= CI_MAXDAT) && last)
         blk.data[CIPPD_SEQ_CNTRL] |= CIPPD_LAST;        /* last packet */
     CI_PUT32 (blk.data, CIPPD_OFFSET, rboff);
     r = ci_receive_int (&blk, FALSE);                   /* pass to system */
@@ -885,6 +966,7 @@ return SCPE_OK;
 t_stat ci_send (CI_PKT *pkt)
 {
 UNIT *uptr = &ci_unit[0];
+uint32 dg_type;
 
 switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
 
@@ -895,6 +977,12 @@ switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by po
     case OPC_REQID:
     case OPC_RETID:
         ci_fmt_send (pkt);                              /* convert to CI format */
+        break;
+
+    case OPC_SNDDG:
+        dg_type = CI_GET16 (pkt->data, PPD_MTYPE);
+        if (dg_type == DG_ACK)
+            ci_open_vc (&ci_unit[0], pkt->data[PPD_PORT]);
         break;
         }
 return ci_send_ppd (uptr, pkt);
@@ -937,11 +1025,18 @@ return ci_enqueue (&ci_rcv, pkt, internal);
 t_stat ci_receive (CI_PKT *pkt)
 {
 UNIT *uptr = &ci_unit[0];
+uint32 dg_type;
 
 switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
     case OPC_SNDDATREC:
     case OPC_DATREC:
         return ci_receive_data (uptr, pkt);
+
+    case OPC_SNDDG:
+        dg_type = CI_GET16 (pkt->data, PPD_MTYPE);
+        if (dg_type == DG_ACK)
+            ci_open_vc (&ci_unit[0], pkt->data[PPD_PORT]);
+        break;
         }
 ci_fmt_receive (pkt);
 return ci_receive_int (pkt, FALSE);
@@ -972,15 +1067,15 @@ return SCPE_IERR;
 #endif
 }
 
-uint32 ciqba_map_buffer (uint32 bnam, uint32 off)
+uint32 ciqba_map_buffer (uint32 bnam, uint32 off, uint32 len)
 {
 uint32 i;
 
 for (i = 0; i < MAX_BMAP; i++) {
     if (ci_map[i].bnam == bnam) {                       /* buffer name found? */
-        if (off > ci_map[i].length)                     /* buffer length exceeded? */
+        if ((off + len) > ci_map[i].length)             /* buffer length exceeded? */
             return 0;                                   /* can't map */
-        return ci_map[i].addr;                          /* yes, return QBus address */
+        return ci_map[i].addr + off;                    /* yes, return QBus address */
         }
     }
 return 0;                                               /* no, unmapped transfer */
@@ -1017,20 +1112,10 @@ switch (pkt->data[PPD_OPC]) {
     case OPC_RESET:
         sim_debug (DBG_REG, &ci_dev, "CIQBA Reset\n");
         port = pkt->data[PPD_PORT];
-        if (!ci_vc_open[port]) {
-            sim_debug (DBG_REG, &ci_dev, "CIQBA Opening VC to %d\n", port);
-            r = ci_open_vc (&ci_unit[0], port);
-            }
-        else {
+        if (ci_check_vc (&ci_unit[0], port)) {
             sim_debug (DBG_REG, &ci_dev, "CIQBA Closing VC to %d\n", port);
             r = ci_close_vc (&ci_unit[0], port);
             }
-        if (r == SCPE_OK) {
-            sim_debug (DBG_REG, &ci_dev, "CIQBA VC status: OK\n");
-            ci_vc_open[port] = !ci_vc_open[port];
-            }
-        else
-            sim_debug (DBG_REG, &ci_dev, "CIQBA VC status: ERROR\n");
         ci_dispose_int (pkt, TRUE);
         break;
 
@@ -1166,8 +1251,6 @@ ci_rcv.ptr = 0;                                         /* reset queue pointers 
 ci_dsp.ptr = 0;
 ci_sndl.ptr = 0;
 ci_sndh.ptr = 0;
-for (i = 0; i < 32; i++)                                /* all VCs closed */
-    ci_vc_open[i] = FALSE;
 for (i = 0; i < MAX_BMAP; i++) {                        /* clear buffer map */
     ci_map[i].addr = 0;
     ci_map[i].length = 0;

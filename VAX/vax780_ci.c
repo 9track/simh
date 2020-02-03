@@ -77,6 +77,8 @@
                          PMCSR_RBPE | PMCSR_TMPE | PMCSR_IPE | \
                          PMCSR_OPE | PMCSR_TBPE | PMCSR_MIF)
 
+#define PSR_MTE         0x80000000                      /* maintenance error */
+
 #define MADR_ADDR       0x1FFF
 
 /* Standard Port Registers */

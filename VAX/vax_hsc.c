@@ -107,7 +107,7 @@ SYSAP hsc_sysap[] = {
     };
 
 UNIT hsc_unit[] = {
-    { UDATA (&hsc_svc, UNIT_IDLE, 0) },
+    { UDATA (&hsc_svc, UNIT_IDLE|UNIT_ATTABLE, 0) },
     { UDATA (&hsc_tmrsvc, UNIT_IDLE|UNIT_DIS, 0) }
     };
 
@@ -835,7 +835,7 @@ do {
         r = hsc_ppd (&pkt);
 } while (r == SCPE_OK);
 // TODO: handle errors from hsc_ppd
-return ci_svc (uptr);
+return ci_port_svc (uptr);
 }
 
 t_stat hsc_show_sysid (FILE *st, UNIT *uptr, int32 val, CONST void *desc)

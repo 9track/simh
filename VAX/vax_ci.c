@@ -463,6 +463,7 @@ switch (dg_type) {
         break;
         }
 
+pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_DGHDR;
 ci_dump_packet (DBG_PPDDG, uptr, pkt->data, dg_size);
 return SCPE_OK;
 }
@@ -541,6 +542,7 @@ switch (dg_type) {
         break;
         }
 
+pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_MSGHDR;
 ci_dump_packet (DBG_PPDDG, uptr, pkt->data, msg_size);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
@@ -628,6 +630,7 @@ t_stat ci_sndlb (UNIT *uptr, CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug_unit (DBG_LCMD, uptr, "==> SNDLB, dest: %d, path: %s\n", port, ci_path_names[path]);
+pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_DGHDR;
 ci_dump_packet (DBG_LCMD, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
@@ -747,6 +750,7 @@ uint32 vcd_nval = vcd_val;                               /* new VCD value */
 t_stat r = SCPE_OK;
 
 sim_debug_unit (DBG_LCMD, uptr, "==> SETCKT, port: %d, mask: %X value: %X\n", port, vcd_mmsk, vcd_mval);
+pkt->length = PPD_VCPVAL;
 ci_dump_packet (DBG_LCMD, uptr, pkt->data, pkt->length);
 
 vcd_nval &= ~vcd_mmsk;
@@ -1346,7 +1350,7 @@ item = &que->item[que->tail];                           /* set information in (n
 memcpy (&item->pkt, pkt, sizeof (CI_PKT)); // TODO: don't copy whole packet?
 }
 
-t_stat ci_svc (UNIT *uptr)
+t_stat ci_port_svc (UNIT *uptr)
 {
 CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
 SOCKET newsock;

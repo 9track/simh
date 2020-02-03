@@ -296,7 +296,7 @@ t_stat ci_show_group (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
 t_stat ci_set_group (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat ci_attach (UNIT *uptr, CONST char *cptr);
 t_stat ci_detach (UNIT *uptr);
-t_stat ci_svc (UNIT *uptr);
+t_stat ci_port_svc (UNIT *uptr);
 t_stat ci_port_reset (DEVICE *dptr);
 
 #endif

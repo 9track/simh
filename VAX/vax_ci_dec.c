@@ -31,23 +31,13 @@
 
 /* Port Status */
 
-#define PSR_V_RQA       0                               /* request queue available */
-#define PSR_V_MFQE      1                               /* message free queue empty */
-#define PSR_V_PDC       2                               /* port disable complete */
-#define PSR_V_PIC       3                               /* port initialisation complete */
-#define PSR_V_DSE       4                               /* data structure error */
-#define PSR_V_MSE       5                               /* memory system error */
-#define PSR_V_MTE       6                               /* maintenance timer expiration  */
-#define PSR_V_ME        31                              /* maintenance error */
-
-#define PSR_RQA         (1u << PSR_V_RQA)
-#define PSR_MFQE        (1u << PSR_V_MFQE)
-#define PSR_PDC         (1u << PSR_V_PDC)
-#define PSR_PIC         (1u << PSR_V_PIC)
-#define PSR_DSE         (1u << PSR_V_DSE)
-#define PSR_MSE         (1u << PSR_V_MSE)
-#define PSR_MTE         (1u << PSR_V_MTE)
-#define PSR_ME          (1u << PSR_V_ME)
+#define PSR_RQA         0x00000001                      /* response queue available */
+#define PSR_MFQE        0x00000002                      /* message free queue empty */
+#define PSR_PDC         0x00000004                      /* port disable complete */
+#define PSR_PIC         0x00000008                      /* port initialisation complete */
+#define PSR_DSE         0x00000010                      /* data structure error */
+#define PSR_MSE         0x00000020                      /* memory system error */
+#define PSR_SE          0x00000040                      /* maintenance timer expiration */
 
 /* Port Queue Block Base */
 
@@ -282,7 +272,7 @@ switch (rg) {
         if (val & 1) {
             ci_psr = 0;
             ci_clr_int ();
-        }
+            }
         break;
 
     case CI_PECR:
@@ -300,7 +290,7 @@ switch (rg) {
                 ci_set_state (uptr, PORT_INIT);
             ci_psr |= PSR_PDC;
             ci_set_int ();
-        }
+            }
         break;
 
     case CI_PICR:
@@ -310,7 +300,7 @@ switch (rg) {
                 ci_set_state (uptr, PORT_INIT);
             ci_psr |= PSR_PIC;
             ci_set_int ();
-        }
+            }
         break;
 
     case CI_PDFQCR:
@@ -704,7 +694,7 @@ do {
         r = ci_receive (uptr, &pkt);
 } while (r == SCPE_OK);
 // TODO: handle errors from ci_receive
-return ci_svc (uptr);
+return ci_port_svc (uptr);
 }
 
 /* Reset CI adapter */

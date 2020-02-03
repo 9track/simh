@@ -1200,7 +1200,7 @@ while (ci_can_deq (&ci_rcv)) {                          /* receive ring availabl
     };
 if ((ci_csr & CSR_ATTN) && (ci_ccr & CCR_ENABLE_INT))   /* any interrupt, enabled? */
     SET_INT (CI);
-return ci_svc (uptr);
+return ci_port_svc (uptr);
 }
 
 char *ci_sym (uint32 addr)

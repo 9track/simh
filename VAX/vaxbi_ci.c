@@ -37,10 +37,6 @@
 #define MDATR_OF        0x403                           /* maintenanace data */
 #define EADR_OF         0x410                           /* EEPROM address */
 
-#define DTYPE_R01
-#define DTYPE_R02
-#define DTYPE_R03
-#define DTYPE_R04
 #define DTYPE_BCA       0x00400000                      /* CIBCA-BA */
 #define DTYPE_EPRM      0x00800000                      /* EEPROM size (0 = 8k, 1 = 32k) */
 #define DTYPE_R20       0x01000000                      /* revision 20 */
@@ -51,29 +47,35 @@
 #define DTYPE_P4K       0x40000000                      /* packet buffer size 4k */
 #define DTYPE_FDX       0x80000000                      /* full duplex */
 
-#define PMCSR_MI        0x00000001                      /* maintenance initialise */
+/* Port maintenance control/status register */
+
+#define PMCSR_START     0x00000001                      /* start */
 #define PMCSR_MTD       0x00000002                      /* maintenance timer disable */
-#define PMCSR_MIE       0x00000004                      /* maintenance interrupt enable */
-#define PMCSR_MIF       0x00000008                      /* maintenance interrupt flag */
 #define PMCSR_WP        0x00000010                      /* wrong parity */
-#define PMCSR_RSVD      0x00000020                      /* reserved */
-#define PMCSR_PSA       0x00000040                      /* programmable starting addr */
-#define PMCSR_UI        0x00000080                      /* uninitialised state */
-#define PMCSR_TBPE      0x00000100                      /* transmit buffer parity error */
-#define PMCSR_OPE       0x00000200                      /* output parity error */
-#define PMCSR_IPE       0x00000400                      /* input parity error */
-#define PMCSR_TMPE      0x00000800                      /* transmit multiple parity error */
-#define PMCSR_RBPE      0x00001000                      /* receive buffer parity error */
-#define PMCSR_LSPE      0x00002000                      /* local store parity error */
+#define PMCSR_MIE       0x00000020                      /* maintenance interrupt enable */
+#define PMCSR_HALT      0x00000080                      /* halt sequencer */
+#define PMCSR_BTO       0x00000100                      /* BI bus timeout */
+#define PMCSR_IIPE      0x00000200                      /* II bus parity error */
+#define PMCSR_MBIE      0x00000400                      /* map BCI/BI error */
+#define PMCSR_CPE       0x00000800                      /* CILP parity error */
+#define PMCSR_XMPE      0x00001000                      /* transmit buffer parity error */
+#define PMCSR_IBPE      0x00002000                      /* internal bus parity error */
 #define PMCSR_CSPE      0x00004000                      /* control store parity error */
-#define PMCSR_PE        0x00008000                      /* parity error */
-#define PMCSR_RW        (PMCSR_PSA | PMCSR_WP | PMCSR_MIE | \
-                         PMCSR_MTD | PMCSR_RSVD)
-#define PMCSR_W1C       (PMCSR_PE | PMCSR_CSPE | PMCSR_LSPE | \
-                         PMCSR_RBPE | PMCSR_TMPE | PMCSR_IPE | \
-                         PMCSR_OPE | PMCSR_TBPE | PMCSR_MIF)
+#define PMCSR_BCIPE     0x00008000                      /* BCI parity error */
+#define PMCSR_RW        (PMCSR_HALT | PMCSR_MIE | PMCSR_WP | \
+                         PMCSR_MTD)
+
+/* Port status register - CIBCA specific bits */
+
+#define PSR_MISC        0x00000080                      /* miscellaneous error */
+#define PSR_MTE         0x00000100                      /* maintenance error */
+#define PSR_MIF         0x00000200                      /* maintenance interrupt */
+#define PSR_UNI         0x00000400                      /* uninitialised */
+#define PSR_NRSPE       0x00008000                      /* no response error */
 
 #define MADR_ADDR       0x1FFF
+#define MADR_M_WORD     0xC000
+#define MADR_V_WORD     14
 
 /* Standard Port Registers */
 
@@ -108,8 +110,9 @@
 
 BIIC ci_biic;                                           /* BIIC standard registers */
 uint32 ci_pmcsr;                                        /* port maintenance csr */
+uint32 ci_psr_bi;                                       /* port status reg (CIBCA specific) */
 uint32 ci_madr;                                         /* mainteneance addr reg */
-uint32 ci_mdatr[8192];                                  /* maintenanace data reg */
+uint32 ci_mdatr[0x4000];                                /* maintenanace data reg */
 uint32 ci_local_store[2048];
 
 extern uint32 nexus_req[NEXUS_HLVL];
@@ -129,7 +132,7 @@ void ci_clr_int (void);
 
 DIB ci_dib = { TR_CI, 0, &ci_rdreg, &ci_wrreg, 0, NVCL (CI) };
 
-UNIT ci_unit = { UDATA (&ci_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
+UNIT ci_unit = { UDATA (&ci_dec_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
 
 REG ci_reg[] = {
     { HRDATA (PMCSR, ci_pmcsr, 32) },
@@ -169,7 +172,7 @@ DEVICE ci_dev = {
     1, 0, 0, 0, 0, 0,
     NULL, NULL, &ci_reset,
     NULL, &ci_attach, &ci_detach,
-    &ci_dib, DEV_NEXUS | DEV_DEBUG | DEV_DISABLE | DEV_DIS, 0,
+    &ci_dib, DEV_NEXUS | DEV_DEBUG | DEV_DISABLE | DEV_DIS | DEV_CI, 0,
     ci_debug, 0, 0
     };
 
@@ -202,66 +205,89 @@ t_stat ci_rdreg (int32 *val, int32 pa, int32 lnt)
 int32 rg;
 UNIT *uptr = &ci_unit;
 REGMAP *p;
+t_stat r;
 
 rg = NEXUS_GETOFS (pa);                                 /* get offset */
 
-if ((rg >= 0x400) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
+if (rg >= 0x700) {
+    sim_printf ("VCD read: %X at %08X\n", pa, fault_PC);
+    *val = 0;
+    return SCPE_OK;
+    }
+if ((rg >= 0x414) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
     *val = ci_local_store[(rg - 0x400)];
+    sim_debug (DBG_REG, &ci_dev, "LOCAL STORE rd: %X = %08X\n", pa, *val);
     return SCPE_OK;
     }
 for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port register */
-    if (p->offset == rg)                                /* mapped? */
-        return ci_dec_rd (uptr, val, p->rg, lnt);
+    if (p->offset == rg) {                              /* mapped? */
+        r = ci_dec_rd (uptr, val, p->rg, lnt);
+        if (r != SCPE_OK)
+            return r;
+        if (p->rg == CI_PSR) {
+            *val = *val | ci_psr_bi;
+            if (uptr->ci_state <= PORT_UCODERUN)
+                *val = *val | PSR_UNI;
+            }
+        return SCPE_OK;
+        }
     }
 switch (rg) {                                           /* CIBCA specific registers */
 
     case BI_DTYPE:
         *val = DTYPE_CIBCA;
+        sim_debug (DBG_REG, &ci_dev, "DTYPE rd: %08X\n", *val);
         break;
 
     case BI_CSR:
         *val = ci_biic.csr & BICSR_RD;
+        sim_debug (DBG_REG, &ci_dev, "VAXBICSR rd: %08X\n", *val);
         break;
 
     case BI_BER:
         *val = ci_biic.ber & BIBER_RD;
+        sim_debug (DBG_REG, &ci_dev, "BER rd: %08X\n", *val);
         break;
 
     case BI_EICR:
         *val = ci_biic.eicr & BIECR_RD;
+        sim_debug (DBG_REG, &ci_dev, "EINTCSR rd: %08X\n", *val);
         break;
 
     case BI_IDEST:
         *val = ci_biic.idest & BIID_RD;
+        sim_debug (DBG_REG, &ci_dev, "INTRDES rd: %08X\n", *val);
         break;
 
     case BI_BCIC:
         *val = ci_biic.bcic;
+        sim_debug (DBG_REG, &ci_dev, "BCICSR rd: %08X\n", *val);
         break;
 
     case BI_UIIC:
         *val = ci_biic.uiic;
+        sim_debug (DBG_REG, &ci_dev, "UINTRCSR rd: %08X\n", *val);
         break;
 
     case PMCSR_OF:
-        if (uptr->ci_state > PORT_UNINIT)
-            ci_pmcsr = ci_pmcsr & ~PMCSR_UI;
-        else
-            ci_pmcsr = ci_pmcsr | PMCSR_UI;
-        *val = (ci_pmcsr & 0xFFFE);                     /* TODO: Need defined mask */
-        sim_debug (DBG_REG, &ci_dev, "PMCSR rd: %08x\n", *val);
+        *val = ci_pmcsr;
+        sim_debug (DBG_REG, &ci_dev, "PMCSR rd: %08X\n", *val);
         break;
 
     case MADR_OF:
-        *val = (ci_madr & MADR_ADDR);
+        *val = (ci_madr >> 2) & MADR_ADDR;
+        *val = *val | ((ci_madr << MADR_V_WORD) & MADR_M_WORD);
+        sim_debug (DBG_REG, &ci_dev, "MADR rd: %08X\n", *val);
         break;
 
     case MDATR_OF:
         *val = ci_mdatr[ci_madr];
+        sim_debug (DBG_REG, &ci_dev, "MDATR rd: %04X = %08X\n", ci_madr, *val);
         break;
 
     case EADR_OF:
         *val = 0;
+        sim_debug (DBG_REG, &ci_dev, "EEPROM rd: %08X\n", *val);
         break;
 
     default:
@@ -281,7 +307,12 @@ REGMAP *p;
 
 rg = NEXUS_GETOFS (pa);                                 /* get offset */
 
-if ((rg >= 0x400) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
+if (rg >= 0x700) {
+    sim_printf ("VCD write: %X = %X at %08X\n", pa, val, fault_PC);
+    return SCPE_OK;
+    }
+if ((rg >= 0x414) && (uptr->ci_state < PORT_UCODERUN)) { /* microcode not running? */
+        sim_debug (DBG_REG, &ci_dev, "LOCAL STORE wr: %X = %08X\n", pa, val);
     ci_local_store[(rg - 0x400)] = val;
     return SCPE_OK;
     }
@@ -292,6 +323,7 @@ for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port regist
 switch (rg) {                                           /* case on type */
 
     case BI_CSR:
+        sim_debug (DBG_REG, &ci_dev, "VAXBICSR wr: %08X\n", val);
         if (val & BICSR_RST) {
             ci_reset (&ci_dev);                         /* reset adapter */
             break;
@@ -300,55 +332,56 @@ switch (rg) {                                           /* case on type */
         break;
 
     case BI_BER:
+        sim_debug (DBG_REG, &ci_dev, "BER wr: %08X\n", val);
         ci_biic.ber = ci_biic.ber & ~(val & BIBER_W1C);
         break;
 
     case BI_EICR:
+        sim_debug (DBG_REG, &ci_dev, "EINTCSR wr: %08X\n", val);
         ci_biic.eicr = (ci_biic.eicr & ~BIECR_RW) | (val & BIECR_RW);
         ci_biic.eicr = ci_biic.eicr & ~(val & BIECR_W1C);
         break;
 
     case BI_IDEST:
+        sim_debug (DBG_REG, &ci_dev, "INTRDES wr: %08X\n", val);
         ci_biic.idest = val & BIID_RW;
         break;
 
+    case BI_BCIC:
+        sim_debug (DBG_REG, &ci_dev, "BCICSR wr: %08X\n", val);
+        ci_biic.bcic = (ci_biic.bcic & ~BICSR_RW) | (val & BICSR_RW);
+        break;
+
     case BI_UIIC:
+        sim_debug (DBG_REG, &ci_dev, "UINTRCSR wr: %08X\n", val);
         break;
 
     case PMCSR_OF:
         sim_debug (DBG_REG, &ci_dev, "PMCSR wr: %08X\n", val);
-        if (val & PMCSR_MI) {                           /* Maintenance Initialise */
+        if (val & PMCSR_START) {
             ci_reset (&ci_dev);
+            ci_set_state (uptr, PORT_UCODERUN);         /* start microcode */
             break;
             }
-        ci_pmcsr &= ~(val & PMCSR_W1C);                 /* Clear W1C bits */
-        ci_pmcsr = (ci_pmcsr & ~PMCSR_RW) | (val & PMCSR_RW); /* Set RW bits */
-
-        if (uptr->ci_state > PORT_UNINIT)
-            ci_pmcsr = ci_pmcsr & ~PMCSR_UI;
-        else
-            ci_pmcsr = ci_pmcsr | PMCSR_UI;
-
-        if ((ci_pmcsr & 0x7F00) > 0)
-            ci_pmcsr |= PMCSR_PE;                       /* Parity Error bit is composite of other parity error bits */
-        else ci_pmcsr &= ~PMCSR_PE;
-
-        if (val & PMCSR_MIF)                            /* interrupt W1C */
-            ci_clr_int();
-
-        if ((val & PMCSR_PSA) && (uptr->ci_state < PORT_UCODERUN)) {
-            ci_set_state (uptr, PORT_UCODERUN);         /* Start microcode */
-            }
+        else if (val & PMCSR_HALT)
+            ci_set_state (uptr, PORT_UNINIT);           /* stop microcode */
+        ci_pmcsr = (ci_pmcsr & ~PMCSR_RW) | (val & PMCSR_RW); /* set RW bits */
         break;
 
     case MADR_OF:
         sim_debug (DBG_REG, &ci_dev, "MADR wr: %08X\n", val);
-        ci_madr = (val & 0x1FFF);
+        ci_madr = ((val & MADR_ADDR) << 2);
+        sim_debug (DBG_REG, &ci_dev, "    -> %08X\n", ci_madr);
+        ci_madr = ci_madr | ((val & MADR_M_WORD) >> MADR_V_WORD);
+        sim_debug (DBG_REG, &ci_dev, "    -> %08X\n", ci_madr);
         break;
 
     case MDATR_OF:
-        sim_debug (DBG_REG, &ci_dev, "MDATR wr: %08X\n", val);
-        ci_mdatr[ci_madr] = val;
+        sim_debug (DBG_REG, &ci_dev, "MDATR wr: %04X = %08X\n", ci_madr, val);
+        ci_mdatr[ci_madr++] = val;
+        if ((ci_madr & 0x3) == 0x3)
+            ci_madr++;
+        ci_madr = ci_madr & 0xFFFF;
         break;
 
     default:
@@ -359,7 +392,7 @@ return SCPE_OK;
 
 void ci_set_int ()
 {
-ci_pmcsr |= PMCSR_MIF;
+ci_psr_bi |= PSR_MIF;
 if (ci_pmcsr & PMCSR_MIE)
     SET_NEXUS_INT (CI);
 return;
@@ -367,7 +400,7 @@ return;
 
 void ci_clr_int ()
 {
-ci_pmcsr &= ~PMCSR_MIF;
+ci_psr_bi &= ~PSR_MIF;
 CLR_NEXUS_INT (CI);
 return;
 }
@@ -383,10 +416,9 @@ ci_biic.ber = 0;
 ci_biic.eicr = 0;
 ci_biic.idest = 0;
 ci_biic.uiic = BIICR_EXV;
-ci_pmcsr = PMCSR_UI;
+ci_pmcsr = 0;
+ci_psr_bi = 0;
 ci_madr = 0;
-for (i = 0; i < 8192; i++)
-    ci_mdatr[i] = 0;
 ci_dec_reset (dptr);
 return SCPE_OK;
 }

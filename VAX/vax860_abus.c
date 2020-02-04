@@ -103,6 +103,7 @@ static struct boot_dev boot_tab[] = {
     { "RQB", BOOT_UDA, 1 << 24 },
     { "RQC", BOOT_UDA, 1 << 24 },
     { "RQD", BOOT_UDA, 1 << 24 },
+    { "RF", BOOT_CI, 0 },
     { "CS", BOOT_CS, 0 },
     { NULL }
     };
@@ -756,6 +757,10 @@ for (i = 0; boot_tab[i].name != NULL; i++) {
         if (dptr->flags & DEV_MBUS) {
             R[1] = ba + TR_MBA0;
             R[2] = unitno;
+            }
+        else if (dptr->flags & DEV_HSC) {
+            R[1] = TR_CI;
+            R[2] = 2;                                   /* HSC node */
             }
         else {
             R[1] = TR_UBA;

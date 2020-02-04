@@ -80,6 +80,7 @@ static struct boot_dev boot_tab[] = {
     { "RQB", BOOT_UDA, 1 << 24 },
     { "RQC", BOOT_UDA, 1 << 24 },
     { "RQD", BOOT_UDA, 1 << 24 },
+    { "RF", BOOT_CI, 0 },
     { "CS", BOOT_CS, 0 },
     { NULL }
     };
@@ -638,6 +639,7 @@ char gbuf[CBUFSIZE];
 char *slptr;
 const char *regptr;
 int32 i, r5v, unitno;
+uint32 ba;
 DEVICE *dptr;
 UNIT *uptr;
 DIB *dibp;
@@ -657,7 +659,9 @@ if ((dptr == NULL) || (uptr == NULL))
     return SCPE_ARG;
 dibp = (DIB *) dptr->ctxt;                              /* get DIB */
 if (dibp == NULL)
-    return SCPE_ARG;
+    ba = 0;
+else
+    ba = dibp->ba;
 unitno = (int32) (uptr - dptr->units);
 r5v = 0;
 /* coverity[NULL_RETURNS] */
@@ -674,8 +678,14 @@ else if (*regptr != 0)
 for (i = 0; boot_tab[i].name != NULL; i++) {
     if (strcmp (dptr->name, boot_tab[i].name) == 0) {
         R[0] = boot_tab[i].code;
-        R[1] = TR_UBA;
-        R[2] = boot_tab[i].let | (dibp->ba & UBADDRMASK);
+        if (dptr->flags & DEV_HSC) {
+            R[1] = TR_CI;
+            R[2] = 2;                                   /* HSC node */
+            }
+        else {
+            R[1] = TR_UBA;
+            R[2] = boot_tab[i].let | (ba & UBADDRMASK);
+            }
         R[3] = unitno;
         R[4] = 0;
         R[5] = r5v;

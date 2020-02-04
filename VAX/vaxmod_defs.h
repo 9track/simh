@@ -299,10 +299,12 @@ extern uint32 *vc_buf;
 #define DEV_V_QBUS      (DEV_V_UF + 1)                  /* Qbus */
 #define DEV_V_Q18       (DEV_V_UF + 2)                  /* Qbus, mem <= 256KB */
 #define DEV_V_CI        (DEV_V_UF + 3)                  /* CI */
+#define DEV_V_HSC       (DEV_V_UF + 4)                  /* HSC */
 #define DEV_UBUS        (1u << DEV_V_UBUS)
 #define DEV_QBUS        (1u << DEV_V_QBUS)
 #define DEV_Q18         (1u << DEV_V_Q18)
 #define DEV_CI          (1u << DEV_V_CI)
+#define DEV_HSC         (1u << DEV_V_HSC)
 
 #define UNIBUS          FALSE                           /* 22b only */
 

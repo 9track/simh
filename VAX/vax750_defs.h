@@ -251,11 +251,13 @@ extern t_stat vax750_show_bootdev (FILE *st, UNIT *uptr, int32 val, CONST void *
 #define DEV_V_MBUS      (DEV_V_UF + 1)                  /* Massbus */
 #define DEV_V_NEXUS     (DEV_V_UF + 2)                  /* Nexus */
 #define DEV_V_CI        (DEV_V_UF + 3)                  /* CI */
-#define DEV_V_FFUF      (DEV_V_UF + 4)                  /* first free flag */
+#define DEV_V_HSC       (DEV_V_UF + 4)                  /* HSC */
+#define DEV_V_FFUF      (DEV_V_UF + 5)                  /* first free flag */
 #define DEV_UBUS        (1u << DEV_V_UBUS)
 #define DEV_MBUS        (1u << DEV_V_MBUS)
 #define DEV_NEXUS       (1u << DEV_V_NEXUS)
 #define DEV_CI          (1u << DEV_V_CI)
+#define DEV_HSC         (1u << DEV_V_HSC)
 #define DEV_QBUS        (0)
 #define DEV_Q18         (0)
 

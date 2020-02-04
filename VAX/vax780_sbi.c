@@ -694,7 +694,7 @@ for (i = 0; boot_tab[i].name != NULL; i++) {
             R[1] = ba + TR_MBA0;
             R[2] = unitno;
             }
-        else if (dptr->flags & DEV_CI) {
+        else if (dptr->flags & DEV_HSC) {
             R[1] = TR_CI;
             R[2] = 2;                                   /* HSC node */
             }

@@ -657,11 +657,9 @@ if ((pa >= VTB_NVR_BASE) && (pa < VTB_NVR_BASE+VTB_NVR_SIZE)) { /* NovRam */
 
 int32 ci_mem_rd (int32 pa)
 {
-int32 rg = pa & 0x7FFC;
+int32 rg = pa & 0x7FFE;
 return (ciqba_pra0_bin[rg] |
-       (ciqba_pra0_bin[rg+1] << 8) |
-       (ciqba_pra0_bin[rg+2] << 16) |
-       (ciqba_pra0_bin[rg+3] << 24));
+       (ciqba_pra0_bin[rg+1] << 8));
 }
 
 t_stat ci_read_packet (CI_PKT *pkt, size_t length)

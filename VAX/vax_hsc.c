@@ -49,6 +49,10 @@ typedef struct {
 
 /* Buffer descriptor */
 
+#define BD_OFF          0                               /* buffer offset */
+#define BD_NAM          1                               /* buffer name */
+#define BD_CON          2                               /* connection ID */
+
 typedef struct {
     uint8 *buf;                                         /* buffer pointer */
     size_t xfrsz;                                       /* buffer length */
@@ -580,7 +584,7 @@ int32 hsc_snddat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
 {
 CI_PKT pkt;
 BDT *bdt = NULL;
-CONN *conn = hsc_getconn (bd[2]);
+CONN *conn = hsc_getconn (bd[BD_CON]);
 uint32 len, i, rboff;
 t_stat r = SCPE_OK;
 
@@ -606,6 +610,7 @@ if (bdt == NULL)                                        /* none available? */
     return xfrsz;                                       /* error */
 
 if (bdt->boff == bdt->xfrsz) {                          /* transfer done? */
+    bd[BD_OFF] += bdt->boff;                            /* update descriptor */
     bdt->buf = NULL;                                    /* remove buffer */
     bdt->boff = 0;
     bdt->xfrsz = 0;
@@ -618,12 +623,12 @@ pkt.data[PPD_STATUS] = 0;                               /* status */
 pkt.data[PPD_OPC] = OPC_SNDDAT;                         /* opcode */
 // TODO: Need to set flags (multiple, last packet)
 pkt.data[PPD_FLAGS] = 0;                                /* flags */
-CI_PUT32 (pkt.data, PPD_LCONID, bd[2]);                 /* local connection ID */
+CI_PUT32 (pkt.data, PPD_LCONID, bd[BD_CON]);            /* local connection ID */
 CI_PUT32 (pkt.data, PPD_RSPID, i);                      /* local response ID */
 CI_PUT32 (pkt.data, PPD_SBNAM, i);
-CI_PUT32 (pkt.data, PPD_RBNAM, bd[1]);
+CI_PUT32 (pkt.data, PPD_RBNAM, bd[BD_NAM]);
 
-rboff = bd[0] + bdt->boff;
+rboff = bd[BD_OFF] + bdt->boff;
 xfrsz = xfrsz - bdt->boff;
 while (xfrsz) {
     len = (xfrsz > CI_MAXDAT) ? CI_MAXDAT : xfrsz;
@@ -653,7 +658,7 @@ int32 hsc_reqdat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
 {
 CI_PKT pkt;
 BDT *bdt = NULL;
-CONN *conn = hsc_getconn (bd[2]);
+CONN *conn = hsc_getconn (bd[BD_CON]);
 uint32 i;
 t_stat r;
 
@@ -679,6 +684,7 @@ if (bdt == NULL)                                        /* none available? */
     return xfrsz;
 
 if (bdt->boff == bdt->xfrsz) {                          /* transfer done? */
+    bd[BD_OFF] += bdt->boff;                            /* update descriptor */
     bdt->buf = NULL;                                    /* remove buffer */
     bdt->boff = 0;
     bdt->xfrsz = 0;
@@ -692,11 +698,11 @@ pkt.data[PPD_STATUS] = 0;                               /* status */
 pkt.data[PPD_OPC] = OPC_REQDAT;                         /* opcode */
 // TODO: Need to set flags (multiple, last packet)
 pkt.data[PPD_FLAGS] = 0;                                /* flags */
-CI_PUT32 (pkt.data, PPD_LCONID, bd[2]);                 /* local connection ID */
+CI_PUT32 (pkt.data, PPD_LCONID, bd[BD_CON]);            /* local connection ID */
 CI_PUT32 (pkt.data, PPD_RSPID, i);                      /* local response ID */
 CI_PUT32 (pkt.data, PPD_XFRSZ, xfrsz);
-CI_PUT32 (pkt.data, PPD_SBNAM, bd[1]);
-CI_PUT32 (pkt.data, PPD_SBOFF, bd[0]);
+CI_PUT32 (pkt.data, PPD_SBNAM, bd[BD_NAM]);
+CI_PUT32 (pkt.data, PPD_SBOFF, bd[BD_OFF]);
 CI_PUT32 (pkt.data, PPD_RBNAM, i);
 CI_PUT32 (pkt.data, PPD_RBOFF, 0);
 r = ci_send_ppd (&hsc_unit[0], &pkt);

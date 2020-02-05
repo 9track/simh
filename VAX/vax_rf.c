@@ -1947,6 +1947,9 @@ if (err != 0) {                                         /* error? */
 bc = bc - tbc;                                          /* decr byte cnt */
 bl = bl + ((tbc + (RF_NUMBY - 1)) / RF_NUMBY);          /* incr blk # */
 //FIXME PUTP32 (pkt, RW_WBAL, ba);                              /* update pkt */
+PUTP32 (pkt, RW_WBD0L, bd[0]);
+PUTP32 (pkt, RW_WBD1L, bd[1]);
+PUTP32 (pkt, RW_WBD2L, bd[2]);
 PUTP32 (pkt, RW_WBCL, bc);
 PUTP32 (pkt, RW_WBLL, bl);
 if (bc)                                                 /* more? resched */

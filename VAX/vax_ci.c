@@ -563,6 +563,7 @@ t_stat ci_reqid (UNIT *uptr, CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug_unit (DBG_REQID, uptr, "==> REQID, dest: %d, path: %s\n", port, ci_path_names[path]);
+pkt->length = PPD_HDR;
 ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 pkt->data[PPD_STATUS] = 0;                              /* Status OK */
 return SCPE_OK;
@@ -1197,7 +1198,7 @@ uint8 src, dst;
 t_stat r;
 
 for (;;) {
-    if (cp->rx_queue.count == CI_QUE_MAX);              /* queue full? */
+    if (cp->rx_queue.count == CI_QUE_MAX)               /* queue full? */
         break;                                          /* yes, done */
     r = sim_read_sock_ex (cp->multi_sock, rcv_pkt.data, CI_MAXFR, &src_addr);
     if (r < 0) {

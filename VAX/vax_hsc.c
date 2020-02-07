@@ -33,7 +33,7 @@
 
 /* Limits */
 
-#define MAX_CONN        5                               /* max connections */
+#define MAX_CONN        (CI_MAX_NODES)                  /* max connections */
 #define MAX_BUFF        (CI_MAX_NODES)                  /* max buffer descriptors */
 
 #define HSC_TIMER       1
@@ -54,10 +54,11 @@ typedef struct {
 #define BD_CON          2                               /* connection ID */
 
 typedef struct {
-    uint8 *buf;                                         /* buffer pointer */
+    uint8  *buf;                                        /* buffer pointer */
     size_t xfrsz;                                       /* buffer length */
     uint32 boff;                                        /* buffer offset */
-    UNIT *uptr;                                         /* buffer owner */
+    UNIT   *uptr;                                       /* buffer owner */
+    uint32 rspid;                                       /* response ID */
 } BDT;
 
 /* SCS Connection descriptor */
@@ -66,7 +67,7 @@ typedef struct {
     uint32 port;                                        /* remote port */
     uint32 conid;                                       /* remote conid */
     uint32 credits;                                     /* current credits */
-    SYSAP *sysap;                                       /* SYSAP descriptor */
+    SYSAP  *sysap;                                      /* SYSAP descriptor */
 } CONN;
 
 /* Virtual circuit states */
@@ -81,6 +82,7 @@ uint32 hsc_sysid = 1;
 char hsc_name[6];
 uint32 hsc_state[CI_MAX_NODES];
 uint32 hsc_path;
+uint32 hsc_rspid;
 CONN hsc_conn[MAX_CONN];
 BDT hsc_bdt[MAX_BUFF];
 
@@ -122,6 +124,8 @@ REG hsc_reg[] = {
 MTAB hsc_mod[] = {
     { MTAB_XTD|MTAB_VDV, 0, "NODE", "NODE",
       &ci_set_node, &ci_show_node },
+    { MTAB_XTD|MTAB_VDV, 0, "GROUP", "GROUP",
+      &ci_set_group, &ci_show_group },
     { MTAB_XTD|MTAB_VDV, 0, "SYSID", "SYSID",
       &hsc_set_sysid, &hsc_show_sysid },
     { 0 }
@@ -146,7 +150,7 @@ DEVICE hsc_dev = {
     "HSC", hsc_unit, hsc_reg, hsc_mod,
     2, 0, 0, 0, 0, 0,
     NULL, NULL, &hsc_reset,
-    NULL, NULL, NULL,
+    NULL, &ci_attach, &ci_detach,
     NULL, DEV_DEBUG | DEV_DISABLE | DEV_DIS | DEV_CI, 0,
     hsc_debug, 0, 0
     };
@@ -357,6 +361,8 @@ if (conn->sysap) {                                      /* connection found? */
     conn->port = 0;
     conn->conid = 0;
     conn->sysap = NULL;
+    ci_send_ppd (&hsc_unit[0], pkt);                    /* send DISRSP */
+    CI_PUT16 (pkt->data, PPD_STYPE, SCS_DISREQ);
     }
 ci_send_ppd (&hsc_unit[0], pkt);                        /* send DISRSP */
 return SCPE_OK;
@@ -366,7 +372,7 @@ return SCPE_OK;
 
 t_stat hsc_crdreq (CI_PKT *pkt)
 {
-uint16 credits = CI_GET16 (pkt->data, SCS_CREDIT);
+int16 credits = CI_GET16 (pkt->data, SCS_CREDIT);
 uint32 conid = CI_GET32 (pkt->data, SCS_DSTCON);
 uint32 srccon = CI_GET32 (pkt->data, SCS_SRCCON);
 CONN *conn = hsc_getconn (conid);
@@ -379,16 +385,20 @@ CI_PUT32 (pkt->data, SCS_DSTCON, srccon);
 CI_PUT32 (pkt->data, SCS_SRCCON, 0);
 if (conn->sysap) {                                      /* connection found? */
     CI_PUT32 (pkt->data, SCS_SRCCON, conid);
-    if ((conn->credits - credits) < conn->sysap->mincr) {
-        credits = conn->credits - conn->sysap->mincr;
-        conn->credits = conn->sysap->mincr;
+    if (credits > 0)
+        conn->credits = conn->credits + credits;
+    else {
+        if ((conn->credits - credits) < conn->sysap->mincr) {
+            credits = conn->credits - conn->sysap->mincr;
+            conn->credits = conn->sysap->mincr;
+            }
+        else
+            conn->credits = conn->credits - credits;
         }
-    else
-        conn->credits = conn->credits - credits;
     }
-else {
-    CI_PUT16 (pkt->data, SCS_CREDIT, 0);
-    }
+else
+    credits = 0;
+CI_PUT16 (pkt->data, SCS_CREDIT, credits);
 ci_send_ppd (&hsc_unit[0], pkt);                        /* send CRRSP */
 return SCPE_OK;
 }
@@ -585,23 +595,24 @@ int32 hsc_snddat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
 CI_PKT pkt;
 BDT *bdt = NULL;
 CONN *conn = hsc_getconn (bd[BD_CON]);
-uint32 len, i, rboff;
+uint32 len, sbnam, rboff;
 t_stat r = SCPE_OK;
 
-for (i = 0; i < MAX_BUFF; i++) {                        /* find existing buffer descriptor */
-    if (hsc_bdt[i].buf == buf) {
-        bdt = &hsc_bdt[i];
+for (sbnam = 0; sbnam < MAX_BUFF; sbnam++) {            /* find existing buffer descriptor */
+    if (hsc_bdt[sbnam].buf == buf) {
+        bdt = &hsc_bdt[sbnam];
         break;
         }
     }
 if (bdt == NULL) {
-    for (i = 0; i < MAX_BUFF; i++) {                    /* find free buffer descriptor */
-        if (hsc_bdt[i].xfrsz == 0) {
-            bdt = &hsc_bdt[i];
+    for (sbnam = 0; sbnam < MAX_BUFF; sbnam++) {        /* find free buffer descriptor */
+        if (hsc_bdt[sbnam].xfrsz == 0) {
+            bdt = &hsc_bdt[sbnam];
             bdt->buf = buf;                             /* setup buffer */
             bdt->boff = 0;
             bdt->xfrsz = xfrsz;
             bdt->uptr = uptr;
+            bdt->rspid = hsc_rspid++;
             break;
             }
         }
@@ -615,17 +626,18 @@ if (bdt->boff == bdt->xfrsz) {                          /* transfer done? */
     bdt->boff = 0;
     bdt->xfrsz = 0;
     bdt->uptr = NULL;
+    bdt->rspid = 0;
     return 0;                                           /* done */
     }
 
 pkt.data[PPD_PORT] = conn->port;                        /* dest port */
 pkt.data[PPD_STATUS] = 0;                               /* status */
 pkt.data[PPD_OPC] = OPC_SNDDAT;                         /* opcode */
-// TODO: Need to set flags (multiple, last packet)
+// TODO: Need to set flags (multiple)
 pkt.data[PPD_FLAGS] = 0;                                /* flags */
 CI_PUT32 (pkt.data, PPD_LCONID, bd[BD_CON]);            /* local connection ID */
-CI_PUT32 (pkt.data, PPD_RSPID, i);                      /* local response ID */
-CI_PUT32 (pkt.data, PPD_SBNAM, i);
+CI_PUT32 (pkt.data, PPD_RSPID, bdt->rspid);             /* local response ID */
+CI_PUT32 (pkt.data, PPD_SBNAM, sbnam);
 CI_PUT32 (pkt.data, PPD_RBNAM, bd[BD_NAM]);
 
 rboff = bd[BD_OFF] + bdt->boff;
@@ -659,23 +671,24 @@ int32 hsc_reqdat (uint32 *bd, uint8 *buf, size_t xfrsz, UNIT *uptr)
 CI_PKT pkt;
 BDT *bdt = NULL;
 CONN *conn = hsc_getconn (bd[BD_CON]);
-uint32 i;
+uint32 rbnam;
 t_stat r;
 
-for (i = 0; i < MAX_BUFF; i++) {                        /* find existing buffer descriptor */
-    if (hsc_bdt[i].buf == buf) {
-        bdt = &hsc_bdt[i];
+for (rbnam = 0; rbnam < MAX_BUFF; rbnam++) {            /* find existing buffer descriptor */
+    if (hsc_bdt[rbnam].buf == buf) {
+        bdt = &hsc_bdt[rbnam];
         break;
         }
     }
 if (bdt == NULL) {
-    for (i = 0; i < MAX_BUFF; i++) {                    /* find free buffer descriptor */
-        if (hsc_bdt[i].xfrsz == 0) {
-            bdt = &hsc_bdt[i];
+    for (rbnam = 0; rbnam < MAX_BUFF; rbnam++) {        /* find free buffer descriptor */
+        if (hsc_bdt[rbnam].xfrsz == 0) {
+            bdt = &hsc_bdt[rbnam];
             bdt->buf = buf;                             /* setup buffer */
             bdt->boff = 0;
             bdt->xfrsz = xfrsz;
             bdt->uptr = uptr;
+            bdt->rspid = hsc_rspid++;
             break;
             }
         }
@@ -689,6 +702,7 @@ if (bdt->boff == bdt->xfrsz) {                          /* transfer done? */
     bdt->boff = 0;
     bdt->xfrsz = 0;
     bdt->uptr = NULL;
+    bdt->rspid = 0;
     return 0;                                           /* done */
     }
 
@@ -699,11 +713,11 @@ pkt.data[PPD_OPC] = OPC_REQDAT;                         /* opcode */
 // TODO: Need to set flags (multiple, last packet)
 pkt.data[PPD_FLAGS] = 0;                                /* flags */
 CI_PUT32 (pkt.data, PPD_LCONID, bd[BD_CON]);            /* local connection ID */
-CI_PUT32 (pkt.data, PPD_RSPID, i);                      /* local response ID */
+CI_PUT32 (pkt.data, PPD_RSPID, bdt->rspid);             /* local response ID */
 CI_PUT32 (pkt.data, PPD_XFRSZ, xfrsz);
 CI_PUT32 (pkt.data, PPD_SBNAM, bd[BD_NAM]);
 CI_PUT32 (pkt.data, PPD_SBOFF, bd[BD_OFF]);
-CI_PUT32 (pkt.data, PPD_RBNAM, i);
+CI_PUT32 (pkt.data, PPD_RBNAM, rbnam);
 CI_PUT32 (pkt.data, PPD_RBOFF, 0);
 r = ci_send_ppd (&hsc_unit[0], &pkt);
 if (r != SCPE_OK) {
@@ -719,28 +733,21 @@ return -1;                                              /* I/O in progress */
 t_stat hsc_datrec (CI_PKT *pkt)
 {
 uint32 xfrsz = CI_GET32 (pkt->data, PPD_XFRSZ);
-uint32 bnam = CI_GET16 (pkt->data, PPD_RBNAM);
+uint32 rbnam = CI_GET16 (pkt->data, PPD_RBNAM);
 uint32 boff = CI_GET32 (pkt->data, PPD_RBOFF);
 uint32 len = (xfrsz > CI_MAXDAT) ? CI_MAXDAT : xfrsz;
 BDT *bdt;
 
-if (bnam < MAX_BUFF) {                                  /* valid name? */
-    bdt = &hsc_bdt[bnam];
+if (rbnam < MAX_BUFF) {                                 /* valid name? */
+    bdt = &hsc_bdt[rbnam];
     if ((bdt->buf) && (boff < bdt->xfrsz)) {            /* valid buffer? */
         memcpy (&bdt->buf[boff], &pkt->data[CI_DATHDR], len);
         bdt->boff += len;
         }
     }
 
-if (pkt->data[PPD_FLAGS] & PPD_LP) {                    /* last packet? */
-//FIXME: Should only send RETCNF for SNDDATREC?
-#if 0
-    pkt->length = CI_DATHDR;
-    pkt->data[PPD_OPC] = OPC_RETCNF;                    /* send confirmation */
-    ci_send_ppd (&hsc_unit[0], pkt);
-#endif
+if (pkt->data[PPD_FLAGS] & PPD_LP)                      /* last packet? */
     sim_activate (bdt->uptr, 0);                        /* xfer done, reactivate */
-    }
 return SCPE_OK;
 }
 
@@ -748,13 +755,18 @@ return SCPE_OK;
 
 t_stat hsc_cnfrec (CI_PKT *pkt)
 {
-uint32 bnam = CI_GET32 (pkt->data, PPD_RSPID);
+uint32 rspid = CI_GET32 (pkt->data, PPD_RSPID);
+uint32 sbnam;
 BDT *bdt;
 
-if (bnam < MAX_BUFF) {                                  /* valid name? */
-    bdt = &hsc_bdt[bnam];
-    sim_activate (bdt->uptr, 0);                        /* xfer done, reactivate */
+for (sbnam = 0; sbnam < MAX_BUFF; sbnam++) {            /* find existing buffer descriptor */
+    if (hsc_bdt[sbnam].rspid == rspid) {
+        bdt = &hsc_bdt[sbnam];
+        break;
+        }
     }
+if (bdt != NULL)                                        /* valid response ID? */
+    sim_activate (bdt->uptr, 0);                        /* xfer done, reactivate */
 return SCPE_OK;
 }
 
@@ -774,7 +786,7 @@ if ((conid | rspid) == 0) {                             /* transaction ID = 0? *
         }
     if (hsc_state[port] < STATE_STSENT)  
         hsc_state[port] = STATE_STSENT;
-    return hsc_start (pkt, DG_START);               /* send START */
+    return hsc_start (pkt, DG_START);                   /* send START */
     }
 return SCPE_OK;
 }
@@ -871,10 +883,11 @@ uint32 i;
 for (i = 0; i < CI_MAX_NODES; i++)
     hsc_state[i] = STATE_CLOSED;
 hsc_path = PPD_PS0;
+hsc_rspid = 1;
 ci_port_reset (dptr);
 if (dptr->flags & DEV_DIS)
     return SCPE_OK;
 sim_activate_after (dptr->units + HSC_TIMER, 10000000);
-sim_clock_coschedule (&hsc_unit[0], tmxr_poll);
+ci_set_state (&hsc_unit[0], PORT_ENABLED);
 return SCPE_OK;
 }

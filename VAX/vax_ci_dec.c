@@ -677,6 +677,10 @@ return ci_receive_int (uptr, pkt);
 t_stat ci_send (UNIT *uptr, CI_PKT *pkt)
 {
 switch (pkt->data[PPD_OPC]) {                           /* opcodes handled by port */
+    case OPC_INVTC:
+        gvp_zap_tb (&ci_mmu);
+        break;
+
     case OPC_SNDDAT:
         return ci_send_data (uptr, pkt);
         }

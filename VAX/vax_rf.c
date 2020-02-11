@@ -1117,7 +1117,7 @@ DEVICE rf_dev = {
     RF_NUMDR + 2, DEV_RDX, T_ADDR_W, 2, DEV_RDX, 16,
     NULL, NULL, &rf_reset,
     NULL, &rf_attach, &rf_detach,
-    NULL, DEV_DISABLE | DEV_DEBUG | DEV_DISK | DEV_SECTORS | DEV_HSC,
+    NULL, DEV_DISABLE | DEV_DIS | DEV_DEBUG | DEV_DISK | DEV_SECTORS | DEV_HSC,
     0, rf_debug, NULL, NULL, &rf_help, NULL, NULL,
     &rf_description
     };

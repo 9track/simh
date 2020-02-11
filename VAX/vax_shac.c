@@ -68,6 +68,7 @@ int32 shac_int = 0;
 
 int32 shac_rd (int32 pa);
 void shac_wr (int32 pa, int32 val, int32 lnt);
+t_stat shac_reset (DEVICE *dptr);
 
 
 /* SHAC adapter data structures
@@ -77,7 +78,7 @@ void shac_wr (int32 pa, int32 val, int32 lnt);
    shac_reg     SHAC register list
 */
 
-UNIT shac_unit = { UDATA (&shac_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
+UNIT shac_unit = { UDATA (&ci_dec_svc, UNIT_IDLE|UNIT_ATTABLE, 0) };
 
 REG shac_reg[] = {
     { NULL }
@@ -108,13 +109,13 @@ DEBTAB shac_debug[] = {
 DEVICE shac_dev = {
     "SHAC", &shac_unit, shac_reg, shac_mod,
     1, 0, 0, 0, 0, 0,
-    NULL, NULL, &ci_reset,
+    NULL, NULL, &shac_reset,
     NULL, &ci_attach, &ci_detach,
     NULL, DEV_DEBUG | DEV_CI, 0,
-    ci_debug, 0, 0
+    shac_debug, 0, 0
     };
 
-REGMAP shac_regmap = {
+REGMAP shac_regmap[] = {
     { PSR_OF, CI_PSR },
     { PQBBR_OF, CI_PQBBR },
     { PCQ0CR_OF, CI_PCQ0CR },
@@ -126,7 +127,7 @@ REGMAP shac_regmap = {
     { PDCR_OF, CI_PDCR },
     { PICR_OF, CI_PICR },
     { PDFQCR_OF, CI_PDFQCR },
-    { PMDQCR_OF, CI_PMFQCR },
+    { PMFQCR_OF, CI_PMFQCR },
     { PMTCR_OF, CI_PMTCR },
     { PMTCR_OF, CI_PMTCR },
     { PMTECR_OF, CI_PMTECR },
@@ -140,11 +141,12 @@ int32 shac_rd (int32 pa)
 {
 int32 rg = (pa >> 2) &  0x3F;
 int32 val;
+t_stat r;
 REGMAP *p;
 
-for (p = &shac_regmap[0]; p->addr != 0; p++) {          /* check for port register */
-    if (p->addr == rg) {                                /* mapped? */
-        val = ci_dec_rd (&shac_unit, val, p->rg, lnt);
+for (p = &shac_regmap[0]; p->offset != 0; p++) {        /* check for port register */
+    if (p->offset == rg) {                              /* mapped? */
+        r = ci_dec_rd (&shac_unit, &val, p->rg, L_LONG);
         if ((p->rg == CI_PQBBR) && (val == 0))          /* PQBBR and not set? */
             break;                                      /* yes, return version instead */
         else
@@ -166,7 +168,7 @@ switch (rg) {
         return 0x03060022;                              /* SHAC version */
 
     default:
-        printf ("SHAC: Unknown address (read) %08X\n", pa);
+        sim_printf ("SHAC: Unknown address (read) %08X\n", pa);
         }
 }
 
@@ -175,9 +177,11 @@ void shac_wr (int32 pa, int32 val, int32 lnt)
 int32 rg = (pa >> 2) &  0x3F;
 REGMAP *p;
 
-for (p = &shac_regmap[0]; p->addr != 0; p++) {          /* check for port register */
-    if (p->addr == rg)                                  /* mapped? */
-        return ci_dec_wr (&shac_unit, val, p->rg, lnt);
+for (p = &shac_regmap[0]; p->offset != 0; p++) {        /* check for port register */
+    if (p->offset == rg) {                              /* mapped? */
+        ci_dec_wr (&shac_unit, val, p->rg, lnt);
+        return;
+        }
     }
 switch (rg) {
 
@@ -195,7 +199,7 @@ switch (rg) {
         break;
 
     default:
-        printf ("SHAC: Unknown address (write) %08X\n", pa);
+        sim_printf ("SHAC: Unknown address (write) %08X\n", pa);
         }
 }
 
@@ -215,7 +219,7 @@ return;
 
 t_stat shac_reset (DEVICE *dptr)
 {
-ci_ppr |= ((0x1010 & PPR_M_IBLEN) << PPR_V_IBLEN);  /* SHAC: set internal buffer length */
+//FIXME ci_ppr |= ((0x1010 & PPR_M_IBLEN) << PPR_V_IBLEN);  /* SHAC: set internal buffer length */
 sh_shma = 0;
 shac_int = 0;
 ci_dec_reset (dptr);

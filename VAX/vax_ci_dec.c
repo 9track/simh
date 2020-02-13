@@ -167,7 +167,8 @@ for ( ;; ) {
     r = ci_send (uptr, &pkt);
     if (r != SCPE_OK)
         break;
-    if (pkt.data[PPD_FLAGS] & PPD_RSP)                  /* response requested? */
+    if ((pkt.data[PPD_FLAGS] & PPD_RSP) ||
+        (pkt.data[PPD_STATUS] != 0))                    /* response required? */
         r = ci_respond (uptr, &pkt);                    /* driver wants it back */
     else
         r = ci_dispose (uptr, &pkt);                    /* dispose of packet */
@@ -221,7 +222,7 @@ switch (rg) {
 
     case CI_PPR:
         *val = ci_ppr | (uptr->ci_node & PPR_NODE);
-        sim_debug_unit (DBG_REG, uptr, "PPR rd: %08X\n", *val);
+        sim_debug_unit (DBG_REG, uptr, "PPR rd: %08X at %08X\n", *val, fault_PC);
         break;
 
     default:
@@ -243,12 +244,11 @@ switch (rg) {
 
     case CI_PQBBR:
         sim_debug_unit (DBG_REG, uptr, "PQBBR wr: %08X\n", val);
-        ci_pqbb_pa = val & PQBB_ADDR;
-        ci_read_pqb (ci_pqbb_pa);
+        ci_pqbb_pa = val;
         break;
 
     case CI_PCQ0CR:
-        sim_debug_unit (DBG_TRC, uptr, "port command queue 0 control\n");
+        sim_debug_unit (DBG_TRC, uptr, "port command queue 0 control at %08X\n", fault_PC);
         if (val & 1)
             return ci_port_command (uptr, PQB_CMD0_OF);
 
@@ -278,8 +278,10 @@ switch (rg) {
     case CI_PECR:
         sim_debug_unit (DBG_TRC, uptr, "port enable\n");
         if (val & 1) {
-            if (uptr->ci_state >= PORT_INIT)
+            if (uptr->ci_state >= PORT_INIT) {
+                ci_read_pqb (ci_pqbb_pa & PQBB_ADDR);
                 ci_set_state (uptr, PORT_ENABLED);
+                }
             }
         break;
 

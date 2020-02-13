@@ -464,12 +464,15 @@ switch (dg_type) {
             hsc_state[port] = STATE_IDREC;
             hsc_fail_vc (port);                         /* close VC and start again */
             }
-        if (hsc_state[port] >= STATE_IDREC)             /* got remote port ID? */
-            return hsc_start (pkt, DG_STACK);           /* send STACK */
+        if (hsc_state[port] >= STATE_IDREC) {           /* got remote port ID? */
+            hsc_state[port] = STATE_VCOPEN;             /* open VC */
+            ci_open_vc (&hsc_unit[0], port);
+            hsc_start (pkt, DG_STACK);                  /* send STACK */
+            }
         else
             return hsc_reqid (pkt);                     /* request remote port ID */
         break;
-
+#if 0
     case DG_STACK:
         if (hsc_state[port] < STATE_STSENT)
             return SCPE_OK;
@@ -478,10 +481,8 @@ switch (dg_type) {
             ci_open_vc (&hsc_unit[0], port);
             }
         return hsc_stack (pkt);                         /* send ACK */
-
+#endif
     case DG_ACK:
-        if (hsc_state[port] < STATE_STSENT)
-            return SCPE_OK;
         if (hsc_state[port] < STATE_VCOPEN) {
             hsc_state[port] = STATE_VCOPEN;             /* open VC */
             ci_open_vc (&hsc_unit[0], port);
@@ -784,9 +785,11 @@ if ((conid | rspid) == 0) {                             /* transaction ID = 0? *
         hsc_state[port] = STATE_IDREC;
         hsc_fail_vc (port);                             /* VC failed */
         }
+#if 0
     if (hsc_state[port] < STATE_STSENT)  
         hsc_state[port] = STATE_STSENT;
     return hsc_start (pkt, DG_START);                   /* send START */
+#endif
     }
 return SCPE_OK;
 }

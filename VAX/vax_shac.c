@@ -1,4 +1,4 @@
-/* vax_shac.c: SHAC adapter
+/* vax_shac.c: Single Host Adapter Chip
 
    Copyright (c) 2017-2019, Matt Burke
 
@@ -34,6 +34,15 @@
 
 #define SSWCR_OF        0xC
 #define SSHMA_OF        0x11
+#define PMCSR_OF        0x17
+
+#define PMCSR_MI        0x00000001                      /* maintenance initialise */
+#define PMCSR_MTD       0x00000002                      /* maintenance timer disable */
+#define PMCSR_IE        0x00000004                      /* interrupt enable */
+#define PMCSR_SIMP      0x00000008                      /* simple SHAC mode */
+#define PMCSR_HAC       0x00000010                      /* host access feature */
+#define PMCSR_RW        (PMCSR_HAC | PMCSR_SIMP | PMCSR_IE | \
+                         PMCSR_MTD)
 
 /* Standard Port Registers */
 
@@ -42,7 +51,6 @@
 #define PESR_OF         0x14
 #define PFAR_OF         0x15
 #define PPR_OF          0x16
-#define PMCSR_OF        0x17
 #define PCQ0CR_OF       0x20
 #define PCQ1CR_OF       0x21
 #define PCQ2CR_OF       0x22
@@ -64,6 +72,7 @@
 #define INT_BUF_LEN     0x1010
 
 uint32 sh_shma;
+uint32 sh_pmcsr;
 int32 shac_int = 0;
 
 int32 shac_rd (int32 pa);
@@ -117,7 +126,6 @@ DEVICE shac_dev = {
 
 REGMAP shac_regmap[] = {
     { PSR_OF, CI_PSR },
-    { PQBBR_OF, CI_PQBBR },
     { PCQ0CR_OF, CI_PCQ0CR },
     { PCQ1CR_OF, CI_PCQ1CR },
     { PCQ2CR_OF, CI_PCQ2CR },
@@ -128,7 +136,6 @@ REGMAP shac_regmap[] = {
     { PICR_OF, CI_PICR },
     { PDFQCR_OF, CI_PDFQCR },
     { PMFQCR_OF, CI_PMFQCR },
-    { PMTCR_OF, CI_PMTCR },
     { PMTCR_OF, CI_PMTCR },
     { PMTECR_OF, CI_PMTECR },
     { PFAR_OF, CI_PFAR },
@@ -147,10 +154,7 @@ REGMAP *p;
 for (p = &shac_regmap[0]; p->offset != 0; p++) {        /* check for port register */
     if (p->offset == rg) {                              /* mapped? */
         r = ci_dec_rd (&shac_unit, &val, p->rg, L_LONG);
-        if ((p->rg == CI_PQBBR) && (val == 0))          /* PQBBR and not set? */
-            break;                                      /* yes, return version instead */
-        else
-            return val;
+        return val;
         }
     }
 switch (rg) {
@@ -164,8 +168,18 @@ switch (rg) {
         return sh_shma;
 
     case PQBBR_OF:
-        sim_debug (DBG_REG, &shac_dev, "PQBBR(ver) rd: %08X at %08X\n", 0x03060022);
-        return 0x03060022;                              /* SHAC version */
+        r = ci_dec_rd (&shac_unit, &val, CI_PQBBR, L_LONG);
+        if (val == 0) {                                 /* not set? */
+            sim_debug (DBG_REG, &shac_dev, "PQBBR(ver) rd: %08X at %08X\n", 0x03060022, fault_PC);
+            return 0x03060022;                          /* SHAC version */
+            }
+        val = (val >> 9);
+        sim_debug (DBG_REG, &shac_dev, "PQBBR rd: %08X at %08X\n", val, fault_PC);
+        return val;
+
+    case PMCSR_OF:
+        sim_debug (DBG_REG, &shac_dev, "PMCSR rd: %08X at %08X\n", sh_pmcsr, fault_PC);
+        return sh_pmcsr;
 
     default:
         sim_printf ("SHAC: Unknown address (read) %08X\n", pa);
@@ -198,6 +212,20 @@ switch (rg) {
         sh_shma = val & 0x3FFFFFF0;
         break;
 
+    case PQBBR_OF:
+        sim_debug (DBG_REG, &shac_dev, "PQBBR wr: %08X at %08X\n", val, fault_PC);
+        ci_dec_wr (&shac_unit, ((val & 0x1FFFFF) << 9), CI_PQBBR, lnt);
+        break;
+
+    case PMCSR_OF:
+        sim_debug (DBG_REG, &shac_dev, "PMCSR wr: %08X at %08X\n", val, fault_PC);
+        if (val & PMCSR_MI) {                           /* Maintenance Initialise */
+            shac_reset (&shac_dev);
+            break;
+            }
+        sh_pmcsr = (sh_pmcsr & ~PMCSR_RW) | (val & PMCSR_RW); /* Set RW bits */
+        break;
+
     default:
         sim_printf ("SHAC: Unknown address (write) %08X\n", pa);
         }
@@ -205,7 +233,8 @@ switch (rg) {
 
 void ci_set_int ()
 {
-shac_int = 1;
+if (sh_pmcsr & PMCSR_IE)
+    shac_int = 1;
 return;
 }
 
@@ -221,6 +250,7 @@ t_stat shac_reset (DEVICE *dptr)
 {
 //FIXME ci_ppr |= ((0x1010 & PPR_M_IBLEN) << PPR_V_IBLEN);  /* SHAC: set internal buffer length */
 sh_shma = 0;
+sh_pmcsr = 0;
 shac_int = 0;
 ci_dec_reset (dptr);
 return SCPE_OK;

@@ -290,6 +290,7 @@ t_stat ci_receive_ppd (UNIT *uptr, CI_PKT *pkt);
 t_stat ci_open_vc (UNIT *uptr, uint8 port);
 t_stat ci_close_vc (UNIT *uptr, uint8 port);
 t_bool ci_check_vc (UNIT *uptr, uint8 port);
+uint8 ci_get_node (UNIT *uptr);
 t_stat ci_show_node (FILE *st, UNIT *uptr, int32 val, CONST void *desc);
 t_stat ci_set_node (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 t_stat ci_show_group (FILE *st, UNIT *uptr, int32 val, CONST void *desc);

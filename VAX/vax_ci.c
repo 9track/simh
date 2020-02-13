@@ -1161,14 +1161,16 @@ memcpy (&tpkt, pkt, sizeof (CI_PKT));                   /* make local copy */
 tpkt.data[HDR_SOURCE] = uptr->ci_node;                  /* local port number */
 
 if (node->uptr) {                                       /* loopback? */
-    sim_debug_unit (DBG_CONN, uptr, "packet destination is local node\n");
     uptr = node->uptr;                                  /* get local unit */
+    if (uptr->ci_state < PORT_ENABLED) {
+        pkt->data[PPD_STATUS] = 0xA1;                   /* status: no path */
+        return SCPE_OK;
+        }
     cp = (CI_PORT *)uptr->port_ctx;                     /* get local port */
-    // TODO: check for queue full
     if (cp->rx_queue.count == CI_QUE_MAX)
         return SCPE_EOF;
     ciq_insert (&cp->rx_queue, &tpkt);                  /* add to queue */
-    sim_activate_abs (uptr, 0);
+    sim_activate_abs (uptr, 100);
     return SCPE_OK;
     }
 
@@ -1186,7 +1188,7 @@ if (node->conn > LINK_WAIT) {                           /* link established? */
     }
 else if (uptr->flags & UNIT_ATT)                        /* no, use multicast */
     r = sim_write_sock_ex (cp->multi_sock, tpkt.data, tpkt.length, cp->group, SIM_SOCK_OPT_DATAGRAM);
-//FIXME: No path
+pkt->data[PPD_STATUS] = 0xA1;                           /* status: no path */
 return SCPE_OK;
 }
 
@@ -1522,6 +1524,11 @@ free (uptr->filename);                                  /* free port string */
 uptr->filename = NULL;
 uptr->flags = uptr->flags & ~UNIT_ATT;                  /* not attached */
 return SCPE_OK;
+}
+
+uint8 ci_get_node (UNIT *uptr)
+{
+return uptr->ci_node;
 }
 
 /* Show CI adapter parameters */

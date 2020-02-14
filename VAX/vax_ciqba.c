@@ -669,7 +669,7 @@ memset (pkt->data, 0, PPD_TYPE);
 sim_debug (DBG_REG, &cq_dev, "cq_read_packet (%d bytes):\n", length);
 if (Map_ReadB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE])) {
     sim_debug (DBG_REG, &cq_dev, "read failed\n");
-    return SCPE_EOF;  // Need own status codes
+    return CISE_MEMERR;
     }
 for (i = 0; i < length; i++) {
     if ((i % 4) == 0)
@@ -686,7 +686,7 @@ uint32 i;
 sim_debug (DBG_REG, &cq_dev, "cq_write_packet (%d bytes):\n", length);
 if (Map_WriteB (pkt->addr + PPD_TYPE, length - PPD_TYPE, &pkt->data[PPD_TYPE])) {
     sim_debug (DBG_REG, &cq_dev, "write failed\n");
-    return SCPE_EOF;
+    return CISE_MEMERR;
     }
 for (i = 0; i < length; i++) {
     if ((i % 4) == 0)
@@ -725,7 +725,7 @@ if (entry & RENT_CIQBA_OWNED) {
         }
     return SCPE_OK;
     }
-return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
+return CISE_NOPKT;
 }
 
 t_stat cq_enqueue (CQ_QUEUE *queue, CI_PKT *pkt, t_bool internal)
@@ -750,7 +750,7 @@ if (entry == RENT_CIQBA_OWNED) {                    /* owned, empty? */
     return SCPE_OK;
     }
 sim_debug (DBG_REG, &cq_dev, "cq_enqueue failed\n");
-return SCPE_EOF;  // May need our own status codes (like sim_tape, sim_disk)
+return CISE_QFULL;
 }
 
 t_bool cq_can_enq (CQ_QUEUE *queue)

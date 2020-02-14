@@ -46,6 +46,16 @@
 #define ci_node         u3                              /* port addr */
 #define ci_state        u4                              /* port state */
 
+/* Return status codes */
+
+#define CISE_OK         0                               /* status OK */
+#define CISE_INVOPC     1                               /* invalid opcode */
+#define CISE_VCERR      2                               /* VC error */
+#define CISE_QFULL      3                               /* queue full */
+#define CISE_NOPKT      4                               /* queue empty */
+#define CISE_QERR       5                               /* queue error */
+#define CISE_MEMERR     6                               /* memory read/write error */
+
 /* CI Port Types */
 
 #define CI_CI780        2                               /* SBI bus */
@@ -231,7 +241,35 @@
 #define DG_ELOG         5                               /* error log */
 #define DG_HOSTSHUT     6                               /* host shutdown */
 #define DG_FUDG         7                               /* firmware update datagram */
+#define DG_MTYPE        0x7FFF                          /* message type */
 #define DG_CCLR         0x8000                          /* cache clear */
+
+/* PPD Status */
+
+#define STS_OK          0x00                            /* OK status */
+#define STS_ERR         0x01                            /* error flag */
+#define STS_P0ACK       0x00                            /* success or not used */
+#define STS_P0NAK       0x02                            /* negative ack */
+#define STS_P0RSP       0x04                            /* no response */
+#define STS_P0ARB       0x06                            /* arbitration timeout */
+#define STS_P1NAK       0x08                            /* negative ack */
+#define STS_P1RSP       0x10                            /* no response */
+#define STS_P1ARB       0x18                            /* arbitration timeout */
+#define STS_VCC         (STS_ERR | 0x20)                /* VC closed */
+#define STS_INVBN       (STS_ERR | 0x40)                /* invalid buffer name */
+#define STS_BLV         (STS_ERR | 0x60)                /* buffer length violation */
+#define STS_ACCV        (STS_ERR | 0x80)                /* access violation */
+#define STS_NP          (STS_ERR | 0xA0)                /* no path */
+#define STS_BMSE        (STS_ERR | 0xC0)                /* buffer memory system error */
+#define STS_OTHER       (STS_ERR | 0xE0)                /* other (see below) */
+#define STS_PSV         (STS_OTHER)                     /* pkt size violation */
+#define STS_URP         (STS_OTHER | 0x02)              /* unrecognized pkt */
+#define STS_INVDP       (STS_OTHER | 0x04)              /* invalid destination port */
+#define STS_URC         (STS_OTHER | 0x06)              /* unrecognized command */
+#define STS_ABO         (STS_OTHER | 0x08)              /* abort (port disabled) */
+#define STS_INVSN       (STS_OTHER | 0x0C)              /* invalid sequence number */
+#define STS_UNIMCMD     (STS_OTHER | 0x0E)              /* Unimplemented command (BVP) */
+#define STS_INVFS       (STS_OTHER | 0x10)              /* Invalid flags or status (BVP) */
 
 /* PPD Flags */
 

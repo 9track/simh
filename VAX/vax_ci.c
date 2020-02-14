@@ -95,12 +95,70 @@
 
 #define port_ctx        up7                             /* port context */
 
+const char* opc_types[] = {                             /* OPC debug definitions */
+    "(invalid)",
+    "SNDDG",
+    "SNDMSG",
+    "RETCNF",
+    "(invalid)",
+    "REQID",
+    "SNDRST",
+    "SNDSTRT",
+    "REQDAT",
+    "REQDAT1",
+    "REQDAT2",
+    "RETID",
+    "(invalid)",
+    "SNDLB",
+    "REQMDAT",
+    "(invalid)",
+    "SNDDAT",
+    "RETDAT",
+    "SNDMDAT",
+    "(invalid)",
+    "(invalid)",
+    "(invalid)",
+    "(invalid)",
+    "(invalid)",
+    "INVTC",
+    "SETCKT",
+    "RDCNT",
+    "(invalid)",
+    "(invalid)",
+    "(invalid)",
+    "(invalid)",
+    "(invalid)",
+    "(invalid)",
+    "DGREC",
+    "MSGREC",
+    "CNFREC",
+    "(invalid)",
+    "REQREC",
+    "RSTREC",
+    "STRTREC",
+    "REQDATREC",
+    "MCNFREC",
+    "(invalid)",
+    "IDREC",
+    "(invalid)",
+    "LBREC",
+    "(invalid)",
+    "(invalid)",
+    "SNDDATREC",
+    "DATREC",
+    "(invalid)",
+    "MDATREC"
+    };
+
 const char* ppd_types[] = {                             /* PPD debug definitions */
     "START",
     "STACK",
     "ACK",
     "SCSDG",
-    "SCSMSG"
+    "SCSMSG",
+    "ELOG",
+    "HOSTSHUT",
+    "FU_DG"
     };
 
 const char* scs_msg_types[] = {                         /* SCS message debug definitions */
@@ -198,7 +256,8 @@ void ciq_clear  (CI_QUE *que);                          /* clear FIFO queue */
 void ciq_remove (CI_QUE *que);                          /* remove item from FIFO queue */
 void ciq_insert (CI_QUE *que, CI_PKT *pkt);             /* insert item into FIFO queue */
 
-void ci_dump_packet (uint32 dctrl, UNIT *uptr, char* buffer, uint32 length)
+
+void ci_dump_pkt (uint32 dctrl, UNIT *uptr, char* buffer, uint32 length)
 {
 uint8 tbyte;
 int32 i, j;
@@ -231,6 +290,18 @@ for (i = 0; i < length; i+=4) {
         }
     sim_debug_unit (DBG_PKT, uptr, "\n");
     }
+}
+
+void ci_debug_pkt (uint32 dctrl, UNIT *uptr, CI_PKT *pkt)
+{
+uint32 port = pkt->data[PPD_PORT];
+uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+uint32 opcode = pkt->data[PPD_OPC];
+if (opcode & OPC_M_RECV)
+    sim_debug_unit (dctrl, uptr, "<== %s, src: %d, path: %s\n", opc_types[opcode], port, ci_path_names[path]);
+else
+    sim_debug_unit (dctrl, uptr, "==> %s, dest: %d, path: %s\n", opc_types[opcode], port, ci_path_names[path]);
+ci_dump_pkt (dctrl, uptr, pkt->data, pkt->length);
 }
 
 /* CI port state change */
@@ -281,7 +352,7 @@ switch (opcode) {
     default:
         sim_printf ("CI: unimplemented opcode (send) %02X\n", opcode);
         }
-return SCPE_IOERR; // TODO: need local status
+return CISE_INVOPC;
 }
 
 t_stat ci_send_ppd (UNIT *uptr, CI_PKT *pkt)
@@ -289,6 +360,7 @@ t_stat ci_send_ppd (UNIT *uptr, CI_PKT *pkt)
 uint32 opcode = pkt->data[PPD_OPC];
 t_stat r;
 
+pkt->data[PPD_STATUS] = STS_OK;                         /* assume ok */
 switch (opcode) {
 
     case OPC_SNDDG:
@@ -338,7 +410,7 @@ switch (opcode) {
     default:
         return ci_local_ppd (uptr, pkt);                /* check for local PPD */
         }
-if (r == SCPE_OK)
+if ((r == SCPE_OK) && (pkt->data[PPD_STATUS] == STS_OK))
     r = ci_send_packet (uptr, pkt);
 return r;
 }
@@ -400,7 +472,7 @@ switch (opcode) {
     default:
         sim_printf ("CI: unimplemented opcode (receive) %02X\n", opcode);
         }
-return SCPE_IOERR; // TODO: need local status
+return CISE_INVOPC;
 }
 
 /*               < SNDDG >                 *
@@ -420,9 +492,7 @@ t_stat ci_snddg (UNIT *uptr, CI_PKT *pkt)
 {
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE);
-uint32 dg_size = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_DGHDR;
-t_stat r;
+uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE) & DG_MTYPE;
 
 switch (dg_type) {
 
@@ -464,7 +534,7 @@ switch (dg_type) {
         }
 
 pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_DGHDR;
-ci_dump_packet (DBG_PPDDG, uptr, pkt->data, dg_size);
+ci_dump_pkt (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -486,25 +556,13 @@ t_stat ci_sndmsg (UNIT *uptr, CI_PKT *pkt)
 {
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-uint32 msg_size = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_MSGHDR;
-uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE) & 0x7FFF;
+uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE) & DG_MTYPE;
 uint16 msg_type;
 
 switch (dg_type) {
 
     case 0:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDMSG - START, dest: %d, path: %s\n", port, ci_path_names[path]);
-        //
-        // The following code may be related to the VC failure mechanism.
-        // Maybe put this in ci_send_packet when VC is not open?
-        //
-        sim_debug_unit (DBG_PPDDG, uptr, "<== SNDMSG - START, No Path\n");
-        pkt->data[PPD_STATUS] = 0xA1;                   /* Status: No Path */
-        // FIXME: Handle this via normal ci_send_ppd() route
-#if 0
-        ci_respond (pkt);
-#endif
-        return SCPE_OK;
         break;
 
     case 1:
@@ -522,7 +580,6 @@ switch (dg_type) {
     case 4:
         msg_type = CI_GET16 (pkt->data, PPD_STYPE);
         sim_debug_unit (DBG_SCSMSG, uptr, "==> SCSMSG - %s, dest: %d, path: %s\n", scs_msg_types[msg_type], port, ci_path_names[path]);
-//        ci_dump_packet (uptr, pkt->data, msg_size);
         break;
 
     case 5:
@@ -543,8 +600,10 @@ switch (dg_type) {
         }
 
 pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_MSGHDR;
-ci_dump_packet (DBG_PPDDG, uptr, pkt->data, msg_size);
+ci_dump_pkt (DBG_PPDDG, uptr, pkt->data, pkt->length);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
+if (!ci_check_vc (uptr, port))
+    pkt->data[PPD_STATUS] = STS_VCC;                    /* VC closed */
 return SCPE_OK;
 }
 
@@ -560,12 +619,12 @@ return SCPE_OK;
  *                                     */
 t_stat ci_reqid (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_REQID, uptr, "==> REQID, dest: %d, path: %s\n", port, ci_path_names[path]);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 pkt->length = PPD_HDR;
-ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
-pkt->data[PPD_STATUS] = 0;                              /* Status OK */
+ci_debug_pkt (DBG_REQID, uptr, pkt);
+//sim_debug_unit (DBG_REQID, uptr, "==> REQID, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -588,11 +647,11 @@ return SCPE_OK;
  *                                                    */
 t_stat ci_reqdat (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_BLKTF, uptr, "==> REQDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
-pkt->data[PPD_STATUS] = 0;                              /* Status OK */
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_BLKTF, uptr, pkt);
+//sim_debug_unit (DBG_BLKTF, uptr, "==> REQDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
@@ -600,12 +659,12 @@ return SCPE_OK;
 t_stat ci_retid (UNIT *uptr, CI_PKT *pkt)
 {
 uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
-CI_NODE *node = &cp->nodes[port];
-sim_debug_unit (DBG_REQID, uptr, "==> RETID, dest: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
-pkt->data[PPD_STATUS] = 0;                              /* Status OK */
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+//CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
+//CI_NODE *node = &cp->nodes[port];
+ci_debug_pkt (DBG_REQID, uptr, pkt);
+//sim_debug_unit (DBG_REQID, uptr, "==> RETID, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 if (ci_check_vc (uptr, port))                           /* VC open? */
     pkt->data[PPD_LCONID] = 1;                          /* set transaction ID */
 return SCPE_OK;
@@ -628,11 +687,12 @@ return SCPE_OK;
  *                                     */
 t_stat ci_sndlb (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_LCMD, uptr, "==> SNDLB, dest: %d, path: %s\n", port, ci_path_names[path]);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_DGHDR;
-ci_dump_packet (DBG_LCMD, uptr, pkt->data, pkt->length);
+ci_debug_pkt (DBG_LCMD, uptr, pkt);
+//sim_debug_unit (DBG_LCMD, uptr, "==> SNDLB, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_LCMD, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -671,58 +731,62 @@ return SCPE_OK;
  */
 t_stat ci_snddat (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_BLKTF, uptr, "==> SNDDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
-pkt->data[PPD_STATUS] = 0;                              /* status OK */
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_BLKTF, uptr, pkt);
+//sim_debug_unit (DBG_BLKTF, uptr, "==> SNDDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
 t_stat ci_retdat (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_BLKTF, uptr, "==> RETDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
-pkt->data[PPD_STATUS] = 0;                              /* status OK */
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_BLKTF, uptr, pkt);
+//sim_debug_unit (DBG_BLKTF, uptr, "==> RETDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
 t_stat ci_retcnf (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_BLKTF, uptr, "==> RETCNF, dest: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_BLKTF, uptr, pkt);
+//sim_debug_unit (DBG_BLKTF, uptr, "==> RETCNF, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
 return SCPE_OK;
 }
 
 t_stat ci_sndrst (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_PPDDG, uptr, "==> SNDRST, dest: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, 0x10);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+pkt->length = 0x10;
+ci_debug_pkt (DBG_PPDDG, uptr, pkt);
+//sim_debug_unit (DBG_PPDDG, uptr, "==> SNDRST, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, 0x10);
 return SCPE_OK;
 }
 
 t_stat ci_sndstrt (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_PPDDG, uptr, "==> SNDSTRT, dest: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_PPDDG, uptr, pkt->data, 0x10);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+pkt->length = 0x10;
+ci_debug_pkt (DBG_PPDDG, uptr, pkt);
+//sim_debug_unit (DBG_PPDDG, uptr, "==> SNDSTRT, dest: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, 0x10);
 return SCPE_OK;
 }
 
 t_stat ci_invtc (UNIT *uptr, CI_PKT *pkt)
 {
 sim_debug_unit (DBG_LCMD, uptr, "==> INVTC\n");
-pkt->data[PPD_STATUS] = 0;                              /* status OK */
 return SCPE_OK;
 }
 
@@ -752,7 +816,7 @@ t_stat r = SCPE_OK;
 
 sim_debug_unit (DBG_LCMD, uptr, "==> SETCKT, port: %d, mask: %X value: %X\n", port, vcd_mmsk, vcd_mval);
 pkt->length = PPD_VCPVAL;
-ci_dump_packet (DBG_LCMD, uptr, pkt->data, pkt->length);
+ci_dump_pkt (DBG_LCMD, uptr, pkt->data, pkt->length);
 
 vcd_nval &= ~vcd_mmsk;
 vcd_nval |= vcd_mval;
@@ -765,7 +829,6 @@ else if (!VCD_OPEN (vcd_nval) && VCD_OPEN (vcd_val))    /* Closing VC */
 if (r != SCPE_OK)
     return r;
 CI_PUT32 (pkt->data, PPD_VCPVAL, vcd_val);
-pkt->data[PPD_STATUS] = 0;                              /* status OK */
 node->vcd = vcd_nval;                                   /* set new VCD value */
 return r;
 }
@@ -780,7 +843,6 @@ CI_PUT32 (pkt->data, 0x1c, 0);                          /* ACKs on path 1 */
 CI_PUT32 (pkt->data, 0x20, 0);                          /* NAKs on path 1 */
 CI_PUT32 (pkt->data, 0x24, 0);                          /* NORSPs on path 1 */
 CI_PUT32 (pkt->data, 0x28, 0);                          /* DGS discarded */
-pkt->data[PPD_STATUS] = 0;                              /* status OK */
 return SCPE_OK;
 }
 
@@ -842,7 +904,7 @@ switch (dg_type) {
         break;
         }
 
-ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
+ci_dump_pkt (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -910,7 +972,7 @@ switch (dg_type) {
         }
 
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
+ci_dump_pkt (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -926,10 +988,11 @@ return SCPE_OK;
  *                                     */
 t_stat ci_reqrec (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_REQID, uptr, "<== REQREC, src: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_REQID, uptr, pkt);
+//sim_debug_unit (DBG_REQID, uptr, "<== REQREC, src: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -952,11 +1015,12 @@ return SCPE_OK;
  *                                                    */
 t_stat ci_reqdatrec (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_BLKTF, uptr, "<== REQDATREC, src: %d, path: %s\n", port, ci_path_names[path]);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_BLKTF, uptr, pkt);
+//sim_debug_unit (DBG_BLKTF, uptr, "<== REQDATREC, src: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -978,20 +1042,22 @@ return SCPE_OK;
  *                                         */
 t_stat ci_idrec (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_REQID, uptr, "<== IDREC, src: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_REQID, uptr, pkt);
+//sim_debug_unit (DBG_REQID, uptr, "<== IDREC, src: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
 t_stat ci_datrec (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_BLKTF, uptr, "<== DATREC, src: %d, path: %s\n", port, ci_path_names[path]);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_BLKTF, uptr, pkt);
+//sim_debug_unit (DBG_BLKTF, uptr, "<== DATREC, src: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -1002,17 +1068,18 @@ uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 uint32 boff = CI_GET32 (pkt->data, PPD_RBOFF);
 sim_debug_unit (DBG_BLKTF, uptr, "<== SNDDATREC, src: %d, path: %s, boff: %X\n", port, ci_path_names[path], boff);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+ci_dump_pkt (DBG_BLKTF, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
 t_stat ci_cnfrec (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_BLKTF, uptr, "<== CNFREC, src: %d, path: %s\n", port, ci_path_names[path]);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_BLKTF, uptr, pkt);
+//sim_debug_unit (DBG_BLKTF, uptr, "<== CNFREC, src: %d, path: %s\n", port, ci_path_names[path]);
 pkt->data[PPD_TYPE] = DYN_SCSMSG;
-ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -1038,26 +1105,28 @@ CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
 CI_NODE *node = &cp->nodes[port];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 sim_debug_unit (DBG_LCMD, uptr, "<== LBREC, path: %s\n", ci_path_names[path]);
-ci_dump_packet (DBG_LCMD, uptr, pkt->data, pkt->length);
+ci_dump_pkt (DBG_LCMD, uptr, pkt->data, pkt->length);
 node->vcd |= (VCD_PAG | VCD_PBG);                       /* path A and B good */
 return SCPE_OK;
 }
 
 t_stat ci_rstrec (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_PPDDG, uptr, "<== RSTREC, src: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_PPDDG, uptr, pkt);
+//sim_debug_unit (DBG_PPDDG, uptr, "<== RSTREC, src: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
 t_stat ci_strtrec (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 port = pkt->data[PPD_PORT];
-uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-sim_debug_unit (DBG_PPDDG, uptr, "<== STRTREC, src: %d, path: %s\n", port, ci_path_names[path]);
-ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
+//uint32 port = pkt->data[PPD_PORT];
+//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
+ci_debug_pkt (DBG_PPDDG, uptr, pkt);
+//sim_debug_unit (DBG_PPDDG, uptr, "<== STRTREC, src: %d, path: %s\n", port, ci_path_names[path]);
+//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -1084,7 +1153,7 @@ sim_debug_unit (DBG_CONN, uptr, "Connecting to node %d at %s...\n", port, node->
 newsock = sim_connect_sock (node->host, NULL, NULL);
 if (newsock == INVALID_SOCKET) {
     sim_debug_unit (DBG_CONN, uptr, "Unable to establish VC to node %d\n", port);
-    return SCPE_OPENERR;
+    return CISE_VCERR;
     }
 sim_debug_unit (DBG_CONN, uptr, "Connected to node %d, socket %d\n", port, newsock);
 node->socket = newsock;
@@ -1133,7 +1202,7 @@ CI_PKT pkt;
 ci_close_vc (uptr, port);                               /* close the VC */
 node->vcd &= ~VCD_CST;                                  /* update descriptor */
 pkt.data[PPD_PORT] = port;                              /* port number */
-pkt.data[PPD_STATUS] = 0;                               /* status: OK */
+pkt.data[PPD_STATUS] = STS_OK;                          /* status: OK */
 pkt.data[PPD_OPC] = OPC_DGREC;                          /* opcode */
 pkt.data[PPD_FLAGS] = 0;                                /* flags */
 pkt.data[PPD_LENGTH] = 0;                               /* message length */
@@ -1163,12 +1232,12 @@ tpkt.data[HDR_SOURCE] = uptr->ci_node;                  /* local port number */
 if (node->uptr) {                                       /* loopback? */
     uptr = node->uptr;                                  /* get local unit */
     if (uptr->ci_state < PORT_ENABLED) {
-        pkt->data[PPD_STATUS] = 0xA1;                   /* status: no path */
+        pkt->data[PPD_STATUS] = STS_NP;                 /* no path */
         return SCPE_OK;
         }
     cp = (CI_PORT *)uptr->port_ctx;                     /* get local port */
     if (cp->rx_queue.count == CI_QUE_MAX)
-        return SCPE_EOF;
+        return CISE_QFULL;
     ciq_insert (&cp->rx_queue, &tpkt);                  /* add to queue */
     sim_activate_abs (uptr, 100);
     return SCPE_OK;
@@ -1188,7 +1257,7 @@ if (node->conn > LINK_WAIT) {                           /* link established? */
     }
 else if (uptr->flags & UNIT_ATT)                        /* no, use multicast */
     r = sim_write_sock_ex (cp->multi_sock, tpkt.data, tpkt.length, cp->group, SIM_SOCK_OPT_DATAGRAM);
-pkt->data[PPD_STATUS] = 0xA1;                           /* status: no path */
+pkt->data[PPD_STATUS] = STS_NP;                         /* no path */
 return SCPE_OK;
 }
 
@@ -1285,14 +1354,16 @@ if (cp->rx_queue.count > 0) {                           /* process receive queue
         path = PPD_PS1;                                 /* default to path 1 */
     pkt->data[PPD_OPC] |= OPC_M_RECV;                   /* convert to rcv opcode */
     pkt->data[PPD_PORT] = pkt->data[HDR_SOURCE];        /* set source port */
+#if 0
     pkt->data[PPD_FLAGS] |= (path << PPD_V_SP);         /* set send path */
+#endif
     pkt->data[PPD_FLAGS] &= ~PPD_RSP;                   /* clear response bit */
     pkt->addr = 0;
     ciq_remove (&cp->rx_queue);                         /* remove processed packet from queue */
     return SCPE_OK;
     }
 
-return SCPE_EOF;
+return CISE_NOPKT;
 }
 
 t_stat ciq_init (CI_QUE* que, int32 max)

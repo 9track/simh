@@ -182,7 +182,7 @@ switch (rg) {
         return sh_pmcsr;
 
     default:
-        sim_printf ("SHAC: Unknown address (read) %08X\n", pa);
+        sim_printf ("SHAC: Unknown address (read) %08X at %08X\n", pa, fault_PC);
         }
 }
 
@@ -227,7 +227,7 @@ switch (rg) {
         break;
 
     default:
-        sim_printf ("SHAC: Unknown address (write) %08X\n", pa);
+        sim_printf ("SHAC: Unknown address (write) %08X at %08X\n", pa, fault_PC);
         }
 }
 

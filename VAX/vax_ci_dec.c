@@ -134,46 +134,46 @@ t_stat ci_dispose (UNIT *uptr, CI_PKT *pkt);
 
 t_stat ci_port_command (UNIT *uptr, int32 queue)
 {
-uint32 ent_addr;
+uint32 ma;
 int16 length;
 CI_PKT pkt;
 t_stat r;
 
 for ( ;; ) {
-    ent_addr = gvp_remqhi (&ci_mmu, ci_pqbb_va + queue);
+    ma = gvp_remqhi (&ci_mmu, ci_pqbb_va + queue);      /* dequeue next entry */
 
-    if (ent_addr == 0)
-        break;
-    if (ent_addr == (ci_pqbb_va + queue))
-        break;
+    if (ma == 0)                                        /* FIXME: dequeue error? */
+        break;                                          /* done */
+    if (ma == (ci_pqbb_va + queue))                     /* empty queue? */
+        break;                                          /* done */
 
-    if (ent_addr & 0x3)
-        sim_printf ("CI: command queue packet not LW aligned\n");
+    if (ma & 0x3)
+        sim_printf ("CI: packet not LW aligned\n");
 
-    pkt.addr = ent_addr;
-    length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD);
+    pkt.addr = ma;
+    length = GVP_Read (&ci_mmu, ma + PPD_SIZE, L_WORD);
     if (length == PPD_DG)                               /* type is dg? */
         length = ci_max_dg;                             /* use max size */
     else if (length == PPD_MSG)                         /* type is msg? */
         length = ci_max_msg;                            /* use max size */
     else if (length < 0) {
-        ent_addr = ent_addr + length;                   /* offset to network header */
-        length = GVP_Read (&ci_mmu, ent_addr + PPD_SIZE, L_WORD) + length;
+        ma = ma + length;                               /* offset to network header */
+        length = GVP_Read (&ci_mmu, ma + PPD_SIZE, L_WORD) + length;
         }
     if (length > CI_MAXFR)                              /* apply safe limit */
         length = CI_MAXFR;
     pkt.length = length;
-    ci_read_packet (uptr, &pkt, pkt.length);
-    r = ci_send (uptr, &pkt);
+    ci_read_packet (uptr, &pkt, pkt.length);            /* read packet */
+    r = ci_send (uptr, &pkt);                           /* process it */
     if (r != SCPE_OK)
         break;
     if ((pkt.data[PPD_FLAGS] & PPD_RSP) ||
-        (pkt.data[PPD_STATUS] != 0))                    /* response required? */
-        r = ci_respond (uptr, &pkt);                    /* driver wants it back */
+        (pkt.data[PPD_STATUS] != STS_OK))               /* response required? */
+        r = ci_respond (uptr, &pkt);                    /* yes */
     else
         r = ci_dispose (uptr, &pkt);                    /* dispose of packet */
-    if (r != SCPE_OK)
-        break;
+    if (r != SCPE_OK)                                   /* error? */
+        break;                                          /* abort processing */
     }
 return SCPE_OK;
 }
@@ -186,12 +186,12 @@ switch (rg) {
 
     case CI_PSR:
         *val = ci_psr;
-        sim_debug_unit (DBG_REG, uptr, "PSR rd: %08X\n", *val);
+        sim_debug_unit (DBG_REG, uptr, "PSR rd: %08X at %08X\n", *val, fault_PC);
         break;
 
     case CI_PQBBR:
         *val = ci_pqbb_pa;
-        sim_debug_unit (DBG_REG, uptr, "PQBBR rd: %08X\n", *val);
+        sim_debug_unit (DBG_REG, uptr, "PQBBR rd: %08X at %08X\n", *val, fault_PC);
         break;
 
     case CI_PCQ0CR:
@@ -207,17 +207,17 @@ switch (rg) {
     case CI_PMTCR:
     case CI_PMTECR:
         *val = 0;
-        sim_debug_unit (DBG_REG, uptr, "other rd: %08X\n", *val);
+        sim_debug_unit (DBG_REG, uptr, "other rd: %08X at %08X\n", *val, fault_PC);
         break;
 
     case CI_PFAR:
         *val = ci_pfar;
-        sim_debug_unit (DBG_REG, uptr, "PFAR rd: %08X\n", *val);
+        sim_debug_unit (DBG_REG, uptr, "PFAR rd: %08X at %08X\n", *val, fault_PC);
         break;
 
     case CI_PESR:
         *val = ci_pesr;
-        sim_debug_unit (DBG_REG, uptr, "PESR rd: %08X\n", *val);
+        sim_debug_unit (DBG_REG, uptr, "PESR rd: %08X at %08X\n", *val, fault_PC);
         break;
 
     case CI_PPR:
@@ -239,11 +239,11 @@ t_stat ci_dec_wr (UNIT *uptr, int32 val, int32 rg, int32 lnt)
 switch (rg) {
 
     case CI_PSR:
-        sim_debug_unit (DBG_WRN, uptr, "PSR wr!\n");
+        sim_debug_unit (DBG_WRN, uptr, "PSR wr! at %08X\n", fault_PC);
         break;
 
     case CI_PQBBR:
-        sim_debug_unit (DBG_REG, uptr, "PQBBR wr: %08X\n", val);
+        sim_debug_unit (DBG_REG, uptr, "PQBBR wr: %08X at %08X\n", fault_PC);
         ci_pqbb_pa = val;
         break;
 
@@ -253,22 +253,22 @@ switch (rg) {
             return ci_port_command (uptr, PQB_CMD0_OF);
 
     case CI_PCQ1CR:
-        sim_debug_unit (DBG_TRC, uptr, "port command queue 1 control\n");
+        sim_debug_unit (DBG_TRC, uptr, "port command queue 1 control at %08X\n", fault_PC);
         if (val & 1)
             return ci_port_command (uptr, PQB_CMD1_OF);
 
     case CI_PCQ2CR:
-        sim_debug_unit (DBG_WRN, uptr, "port command queue 2 control\n");
+        sim_debug_unit (DBG_WRN, uptr, "port command queue 2 control at %08X\n", fault_PC);
         if (val & 1)
             return ci_port_command (uptr, PQB_CMD2_OF);
 
     case CI_PCQ3CR:
-        sim_debug_unit (DBG_WRN, uptr, "port command queue 3 control\n");
+        sim_debug_unit (DBG_WRN, uptr, "port command queue 3 control at %08X\n", fault_PC);
         if (val & 1)
             return ci_port_command (uptr, PQB_CMD3_OF);
 
     case CI_PSRCR:
-        sim_debug_unit (DBG_TRC, uptr, "port status release control\n");
+        sim_debug_unit (DBG_TRC, uptr, "port status release control at %08X\n", fault_PC);
         if (val & 1) {
             ci_psr = 0;
             ci_clr_int ();
@@ -276,7 +276,7 @@ switch (rg) {
         break;
 
     case CI_PECR:
-        sim_debug_unit (DBG_TRC, uptr, "port enable\n");
+        sim_debug_unit (DBG_TRC, uptr, "port enable at %08X\n", fault_PC);
         if (val & 1) {
             if (uptr->ci_state >= PORT_INIT) {
                 ci_read_pqb (ci_pqbb_pa & PQBB_ADDR);
@@ -286,7 +286,7 @@ switch (rg) {
         break;
 
     case CI_PDCR:
-        sim_debug_unit (DBG_TRC, uptr, "port disable\n");
+        sim_debug_unit (DBG_TRC, uptr, "port disable at %08X\n", fault_PC);
         if (val & 1) {
             if (uptr->ci_state >= PORT_INIT)
                 ci_set_state (uptr, PORT_INIT);
@@ -296,7 +296,7 @@ switch (rg) {
         break;
 
     case CI_PICR:
-        sim_debug_unit (DBG_TRC, uptr, "port init\n");
+        sim_debug_unit (DBG_TRC, uptr, "port init at %08X\n", fault_PC);
         if (val & 1) {
             if (uptr->ci_state >= PORT_UNINIT)
                 ci_set_state (uptr, PORT_INIT);
@@ -306,31 +306,31 @@ switch (rg) {
         break;
 
     case CI_PDFQCR:
-        sim_debug_unit (DBG_TRC, uptr, "port datagram free queue\n");
+        sim_debug_unit (DBG_TRC, uptr, "port datagram free queue at %08X\n", fault_PC);
         break;
 
     case CI_PMFQCR:
-        sim_debug_unit (DBG_TRC, uptr, "port message free queue\n");
+        sim_debug_unit (DBG_TRC, uptr, "port message free queue at %08X\n", fault_PC);
         break;
 
     case CI_PMTCR:
-        sim_debug_unit (DBG_REG, uptr, "PMTCR wr: %08X\n", val);
+        sim_debug_unit (DBG_REG, uptr, "PMTCR wr: %08X at %08X\n", fault_PC);
         break;
 
     case CI_PMTECR:
-        sim_debug_unit (DBG_REG, uptr, "PMTECR wr: %08X\n", val);
+        sim_debug_unit (DBG_REG, uptr, "PMTECR wr: %08X at %08X\n", fault_PC);
         break;
 
     case CI_PFAR:
-        sim_debug_unit (DBG_WRN, uptr, "PFAR wr!\n");
+        sim_debug_unit (DBG_WRN, uptr, "PFAR wr! at %08X\n", fault_PC);
         break;
 
     case CI_PESR:
-        sim_debug_unit (DBG_WRN, uptr, "PESR wr!\n");
+        sim_debug_unit (DBG_WRN, uptr, "PESR wr! at %08X\n", fault_PC);
         break;
 
     case CI_PPR:
-        sim_debug_unit (DBG_WRN, uptr, "PPR wr!\n");
+        sim_debug_unit (DBG_WRN, uptr, "PPR wr! at %08X\n", fault_PC);
         break;
 
     default:
@@ -343,90 +343,90 @@ return SCPE_OK;
 
 void ci_read_pqb (uint32 pa)
 {
-ci_max_dg = CI_ReadL (pa + PQB_DFQL_OF);                /* packet sizes */
+ci_max_dg = CI_ReadL (pa + PQB_DFQL_OF);                /* max packet sizes */
 ci_max_msg = CI_ReadL (pa + PQB_DFML_OF);
 ci_pqbb_va = CI_ReadL (pa + PQB_PQBBVA_OF);
 ci_bdt_va = CI_ReadL (pa + PQB_BDTVA_OF);               /* buffer descriptors */
 ci_bdt_len = CI_ReadL (pa + PQB_BDTLEN_OF);
-ci_mmu.sbr = CI_ReadL (pa + PQB_SBR_OF);                /* memory management */
+ci_mmu.sbr = CI_ReadL (pa + PQB_SBR_OF);                /* system page table */
 ci_mmu.sbr = (ci_mmu.sbr - 0x1000000) & ~03;            /* VA<31> >> 7 */
 ci_mmu.slr = CI_ReadL (pa + PQB_SLR_OF);
 ci_mmu.slr = (ci_mmu.slr << 2) + 0x1000000;             /* VA<31> >> 7 */
-ci_mmu.gbr = CI_ReadL (pa + PQB_GPT_OF);
+ci_mmu.gbr = CI_ReadL (pa + PQB_GPT_OF);                /* global page table */
 ci_mmu.glr = CI_ReadL (pa + PQB_GLR_OF);
 ci_mmu.glr = (ci_mmu.glr << 2);
 }
 
 t_stat ci_send_data (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 data_len, total_data_len;
-uint16 snd_name, page_offset;
-uint32 snd_offset, rec_offset, data_pte;
-uint16 flags, key;
+uint32 len, xfrsz, bd, sboff, rboff, pte;
+uint16 sbnam, snd_key, flags, key;
 t_stat r;
 
-total_data_len = CI_GET32 (pkt->data, PPD_XFRSZ);
-snd_name = CI_GET16 (pkt->data, PPD_SBNAM);             /* Get BDT table offset */
-snd_offset = CI_GET32 (pkt->data, PPD_SBOFF);           /* Get data starting offset */
-rec_offset = CI_GET32 (pkt->data, PPD_RBOFF);           /* Get data starting offset */
+xfrsz = CI_GET32 (pkt->data, PPD_XFRSZ);
+sbnam = CI_GET16 (pkt->data, PPD_SBNAM);                /* BDT table offset */
+snd_key = CI_GET16 (pkt->data, PPD_SBNAM + 2);
+sboff = CI_GET32 (pkt->data, PPD_SBOFF);                /* send buffer offset */
+rboff = CI_GET32 (pkt->data, PPD_RBOFF);                /* receive buffer offset */
+bd = ci_bdt_va + (sbnam * BD_LEN);                      /* buffer descriptor VA */
 
-flags = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_FLAGS_OF, L_WORD);
-key = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_KEY_OF, L_WORD);
-data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (snd_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
-page_offset = flags & BD_M_OFF;
+flags = GVP_Read (&ci_mmu, bd + BD_FLAGS_OF, L_WORD);   /* buffer flags */
+key = GVP_Read (&ci_mmu, bd + BD_KEY_OF, L_WORD);       /* buffer key */
+pte = GVP_Read (&ci_mmu, bd + BD_PTE_OF, L_LONG);       /* page table entry addr */
+sboff = sboff + (flags & BD_M_OFF);                     /* add page offset */
 
-while (total_data_len > 0) {
-    if (total_data_len > CI_MAXDAT)
-        data_len = CI_MAXDAT;
+if (snd_key != key)                                     /* check buffer key */
+    sim_printf ("CI: wrong buffer key\n");
+
+while (xfrsz > 0) {
+    if (xfrsz > CI_MAXDAT)                              /* limit to max transfer */
+        len = CI_MAXDAT;
     else
-        data_len = total_data_len;
+        len = xfrsz;
+    ci_readb (pte, len, sboff, &pkt->data[CI_DATHDR]);  /* transfer from buffer */
     if (pkt->data[PPD_OPC] == OPC_REQDATREC)
-        pkt->data[PPD_OPC] = OPC_RETDAT;
-    ci_readb (data_pte, data_len, page_offset + snd_offset, &pkt->data[CI_DATHDR]);
-    CI_PUT32 (pkt->data, PPD_XFRSZ, total_data_len);    /* update packet */
-    CI_PUT32 (pkt->data, PPD_RBOFF, rec_offset);
-    if (total_data_len <= CI_MAXDAT)
+        pkt->data[PPD_OPC] = OPC_RETDAT;                /* set return opcode */
+    CI_PUT32 (pkt->data, PPD_XFRSZ, xfrsz);             /* update packet */
+    CI_PUT32 (pkt->data, PPD_RBOFF, rboff);
+    if (xfrsz <= CI_MAXDAT)
         pkt->data[PPD_FLAGS] |= PPD_LP;                 /* last packet */
-    pkt->length = data_len + CI_DATHDR;
-    r = ci_send_ppd (uptr, pkt);
+    pkt->length = len + CI_DATHDR;
+    r = ci_send_ppd (uptr, pkt);                        /* send data */
     if (r != SCPE_OK)
         return r;
-    total_data_len -= data_len;
-    snd_offset += data_len;
-    rec_offset += data_len;
+    xfrsz -= len;
+    sboff += len;
+    rboff += len;
     }
 return SCPE_OK;
 }
 
 t_stat ci_receive_data (UNIT *uptr, CI_PKT *pkt)
 {
-uint32 data_len, total_data_len;
-uint16 rec_name, page_offset, rec_key;
-uint32 rec_offset, data_pte;
-uint16 flags, key;
+uint32 len, xfrsz, bd, rboff, pte;
+uint16 rbnam, rec_key, flags, key;
 t_stat r;
 
-total_data_len = CI_GET32 (pkt->data, PPD_XFRSZ);
-rec_name = CI_GET16 (pkt->data, PPD_RBNAM);             /* Get BDT table offset */
+xfrsz = CI_GET32 (pkt->data, PPD_XFRSZ);
+rbnam = CI_GET16 (pkt->data, PPD_RBNAM);                /* BDT table offset */
 rec_key = CI_GET16 (pkt->data, PPD_RBNAM + 2);
-rec_offset = CI_GET32 (pkt->data, PPD_RBOFF);           /* Get data starting offset */
+rboff = CI_GET32 (pkt->data, PPD_RBOFF);                /* receive buffer offset */
+bd = ci_bdt_va + (rbnam * BD_LEN);
 
-flags = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_FLAGS_OF, L_WORD);
-key = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_KEY_OF, L_WORD);
-data_pte = GVP_Read (&ci_mmu, ci_bdt_va + (rec_name * BD_LEN) + BD_PTE_OF, L_LONG); /* Get PTE addr */
-page_offset = flags & BD_M_OFF;
+flags = GVP_Read (&ci_mmu, bd + BD_FLAGS_OF, L_WORD);   /* buffer flags */
+key = GVP_Read (&ci_mmu, bd + BD_KEY_OF, L_WORD);       /* buffer key */
+pte = GVP_Read (&ci_mmu, bd + BD_PTE_OF, L_LONG);       /* page table entry addr */
+rboff = rboff + (flags & BD_M_OFF);                     /* add page offset */
 
-if (rec_key != key)
+if (rec_key != key)                                     /* check buffer key */
     sim_printf ("CI: wrong buffer key\n");
 
-if (total_data_len > CI_MAXDAT)
-    data_len = CI_MAXDAT;
+if (xfrsz > CI_MAXDAT)                                  /* limit to max transfer */
+    len = CI_MAXDAT;
 else
-    data_len = total_data_len;
+    len = xfrsz;
 
-ci_writeb (data_pte, data_len, page_offset + rec_offset, &pkt->data[CI_DATHDR]);
-
-total_data_len -= data_len;
+ci_writeb (pte, len, rboff, &pkt->data[CI_DATHDR]);     /* transfer to buffer */
 
 if (pkt->data[PPD_FLAGS] & PPD_LP) {                    /* last packet? */
     pkt->length = CI_DATHDR;
@@ -474,7 +474,7 @@ void ci_read_packet (UNIT *uptr, CI_PKT *pkt, size_t length)
 {
 int32 i;
 
-sim_debug_unit (DBG_TRC, uptr, "ci_read_packet:  addr: %08X, pkt->length: %d, length: %d\n", pkt->addr, pkt->length, length);
+sim_debug_unit (DBG_TRC, uptr, "ci_read_packet: addr: %08X, pkt->length: %d, length: %d\n", pkt->addr, pkt->length, length);
 for (i = PPD_SIZE; i < length; i++)                     /* skip the queue pointers */
     pkt->data[i] = GVP_Read (&ci_mmu, (pkt->addr + i), L_BYTE);
 }
@@ -501,7 +501,7 @@ if ((offset | bc) & 03) {                               /* check alignment */
     for (i = offset; i < (offset + bc); i++, buf++) {   /* by bytes */
         pte_va = pte_ba + ((i >> 7) & ~0x3);
         pte = GVP_Read (&ci_mmu, pte_va, L_LONG);
-        pa = ((pte & 0x1fffff) << 9) | VA_GETOFF(i);
+        pa = ((pte & PTE_PFN) << VA_N_OFF) | VA_GETOFF(i);
         *buf = ReadB (pa);
         }
     }
@@ -509,7 +509,7 @@ else {
     for (i = offset; i < (offset + bc); i = i + 4, buf++) { /* by longwords */
         pte_va = pte_ba + ((i >> 7) & ~0x3);
         pte = GVP_Read (&ci_mmu, pte_va, L_LONG);
-        pa = ((pte & 0x1fffff) << 9) | VA_GETOFF(i);
+        pa = ((pte & PTE_PFN) << VA_N_OFF) | VA_GETOFF(i);
         dat = ReadL (pa);                               /* get lw */
         *buf++ = dat & BMASK;                           /* low 8b */
         *buf++ = (dat >> 8) & BMASK;                    /* next 8b */
@@ -529,7 +529,7 @@ if ((offset | bc) & 03) {                               /* check alignment */
     for (i = offset; i < (offset + bc); i++, buf++) {   /* by bytes */
         pte_va = pte_ba + ((i >> 7) & ~0x3);
         pte = GVP_Read (&ci_mmu, pte_va, L_LONG);
-        pa = ((pte & 0x1fffff) << 9) | VA_GETOFF(i);  // TODO: Check that 0x1fffff is correct
+        pa = ((pte & PTE_PFN) << VA_N_OFF) | VA_GETOFF(i);
         WriteB (pa, *buf);
         }
     }
@@ -537,7 +537,7 @@ else {
     for (i = offset; i < (offset + bc); i = i + 4, buf++) { /* by longwords */
         pte_va = pte_ba + ((i >> 7) & ~0x3);
         pte = GVP_Read (&ci_mmu, pte_va, L_LONG);
-        pa = ((pte & 0x1fffff) << 9) | VA_GETOFF(i);
+        pa = ((pte & PTE_PFN) << VA_N_OFF) | VA_GETOFF(i);
         dat = (uint32) *buf++;                          /* get low 8b */
         dat = dat | (((uint32) *buf++) << 8);           /* merge next 8b */
         dat = dat | (((uint32) *buf++) << 16);          /* merge next 8b */
@@ -578,9 +578,9 @@ uint32 hdr;
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_DFQA_OF, L_LONG);
 pkt->addr = gvp_remqhi (&ci_mmu, hdr);
 if (pkt->addr == 0)                                     /* queue error? */
-    return SCPE_EOF;
+    return CISE_QERR;
 if (pkt->addr == (ci_pqbb_va + PQB_MFQA_OF))            /* queue empty? */
-    return SCPE_EOF;
+    return CISE_NOPKT;
 return SCPE_OK;
 }
 
@@ -604,9 +604,9 @@ uint32 hdr;
 hdr = GVP_Read (&ci_mmu, ci_pqbb_va + PQB_MFQA_OF, L_LONG);
 pkt->addr = gvp_remqhi (&ci_mmu, hdr);
 if (pkt->addr == 0)                                     /* queue error? */
-    return SCPE_EOF;
+    return CISE_QERR;
 if (pkt->addr == (ci_pqbb_va + PQB_MFQA_OF))            /* queue empty? */
-    return SCPE_EOF;
+    return CISE_NOPKT;
 return SCPE_OK;
 }
 

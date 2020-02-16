@@ -1,6 +1,6 @@
-/* vax780_ci.c: VAX 11/780 Computer Interconnect adapter
+/* vax_cibci.c: VAXBI Computer Interconnect adapter
 
-   Copyright (c) 2017-2019, Matt Burke
+   Copyright (c) 2020, Matt Burke
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -23,37 +23,35 @@
    used in advertising or otherwise to promote the sale, use or other dealings
    in this Software without prior written authorization from the author.
 
-   ci             CI780/CI750 CI adapter
+   ci             CIBCI CI adapter
 */
 
 #include "vax_defs.h"
 #include "vax_ci.h"
 #include "vax_ci_dec.h"
 
-/* CI780 Registers */
+/* CIBCI Registers */
 
-#define CNFGR_OF        0x0
-#define PMCSR_OF        0x4
-#define PMCSR_OF1       0x10
-#define MADR_OF         0x14
-#define MDATR_OF        0x18
+#define CNFGR_OF        0x100
+#define PMCSR_OF        0x110
+#define MADR_OF         0x114
+#define MDATR_OF        0x118
+#define BCAR_OF         0x124
+#define BCMR_OF         0x128
+#define DMAF_OF         0x12C
 
-#define CNFGR_CODE      0x38                            /* adapter code */
-#define CNFGR_PFD       0x00000100                      /* power fail disable */
-#define CNFGR_TD        0x00000200                      /* transmit dead */
-#define CNFGR_TFL       0x00000400                      /* transmit fail */
-#define CNFGR_CRD       0x00010000                      /* corrected read data */
-#define CNFGR_RDS       0x00020000                      /* read data substitute */
-#define CNFGR_CTE       0x00040000                      /* command transmit error */
-#define CNFGR_RDT       0x00080000                      /* read data timeout */
-#define CNFGR_CTT       0x00100000                      /* command transmit timeout */
-#define CNFGR_PUP       0x00400000                      /* power up */
-#define CNFGR_PDN       0x00800000                      /* power down */
-#define CNFGR_TFLT      0x04000000                      /* transmit fault */
-#define CNFGR_MTF       0x08000000                      /* multiple transmitter fault */
-#define CNFGR_URDF      0x20000000                      /* unexpected read data fault */
-#define CNFGR_RSF       0x40000000                      /* write sequence fault */
-#define CNFGR_PF        0x80000000                      /* parity fault */
+#define CNFGR_BCMR      0x0000FFFF
+#define CNFGR_CMD       0x000F0000                      /* corrected read data */
+#define CNFGR_CIPA      0x00800000                      /* no CIPA */
+#define CNFGR_DCLO      0x01000000                      /* CIPA DC low */
+#define CNFGR_DIAG      0x02000000                      /* enable diagnostic mode */
+#define CNFGR_PUP       0x04000000                      /* power up */
+#define CNFGR_PDN       0x08000000                      /* power down */
+#define CNFGR_BBE       0x10000000                      /* VAXBI BSY error */
+#define CNFGR_BIPE      0x20000000                      /* VAXBI parity error */ 
+#define CNFGR_BAPE      0x40000000                      /* BICA parity error */
+#define CNFGR_CPPE      0x80000000                      /* CIPA bus parity error */
+#define CNFGR_RW        (CNFGR_DIAG)
 
 #define PMCSR_MI        0x00000001                      /* maintenance initialise */
 #define PMCSR_MTD       0x00000002                      /* maintenance timer disable */
@@ -77,6 +75,18 @@
 #define PMCSR_W1C       (PMCSR_PE | PMCSR_CSPE | PMCSR_LSPE | \
                          PMCSR_RBPE | PMCSR_TMPE | PMCSR_IPE | \
                          PMCSR_OPE | PMCSR_TBPE | PMCSR_MIF)
+
+#define BCAR_ADDR       0x0FFFFFFF                      /* DMA address */
+#define BCAR_V_ADDR     2                               /* offset for read only */
+#define BCAR_CMD        0xF0000000                      /* SBI command */
+#define BCAR_LEN        0xE0000000                      /* transfer length */
+
+#define BCMR_MSK0       0x0000000F                      /* first longword mask */
+#define BCMR_MSK1       0x000000F0                      /* second longword mask */
+#define BCMR_MSK        (BCMR_MSK0 | BCMR_MSK1)
+#define BCMR_V_MSK      2                               /* offset for read only */
+#define BCMR_CMD        0x00003C00                      /* SBI command */
+#define BCMR_LEN        0x0001C000                      /* transfer length */
 
 #define PSR_MTE         0x80000000                      /* maintenance error */
 
@@ -102,21 +112,25 @@
 #define PESR_OF         0x93C
 #define PPR_OF          0x940
 
-/* CI780 Port Parameters */
+/* CIBCI Port Parameters */
 
 #define RPORT_TYPE      0x80000002
 #define CODE_REV        0x00700040
 #define FUNC_MASK       0xFFFF0F00
 #define INT_BUF_LEN     0x3F9
 
-/* CI780 Port States */
+/* CIBCI Port States */
 
 #define PORT_UCODERUN   1                               /* microcode running */
 
+BIIC ci_biic;                                           /* BIIC standard registers */
 uint32 ci_cnfgr;                                        /* configuration reg */
 uint32 ci_pmcsr;                                        /* port maintenance csr */
 uint32 ci_madr;                                         /* mainteneance addr reg */
 uint32 ci_mdatr[8192];                                  /* maintenanace data reg */
+uint32 ci_bcar;                                         /* BICA address register */
+uint32 ci_bcmr;                                         /* BICA command/byte mask register */
+uint32 ci_dmaf[4];                                      /* DMA register file */
 uint32 ci_local_store[1024];
 
 extern uint32 nexus_req[NEXUS_HLVL];
@@ -127,7 +141,7 @@ t_stat ci_wrreg (int32 val, int32 pa, int32 lnt);
 void ci_set_int (void);
 void ci_clr_int (void);
 
-/* CI780 adapter data structures
+/* CIBCI adapter data structures
 
    ci_dev     CI device descriptors
    ci_unit    CI unit
@@ -203,7 +217,7 @@ REGMAP ci_regmap[] = {
     { 0, 0 }
     };
 
-/* Read CI780 adapter register */
+/* Read CIBCI adapter register */
 
 t_stat ci_rdreg (int32 *val, int32 pa, int32 lnt)
 {
@@ -219,16 +233,55 @@ for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port regist
     if (p->offset == rg)                                /* mapped? */
         return ci_dec_rd (uptr, val, p->rg, lnt);
     }
-switch (rg) {                                           /* CI780 specific registers */
+switch (rg) {                                           /* CIBCI specific registers */
+
+    case BI_DTYPE:
+        *val = DTYPE_CIBCI;
+        sim_debug (DBG_REG, &ci_dev, "DTYPE rd: %08X\n", *val);
+        break;
+
+    case BI_CSR:
+        *val = ci_biic.csr & BICSR_RD;
+        sim_debug (DBG_REG, &ci_dev, "VAXBICSR rd: %08X\n", *val);
+        break;
+
+    case BI_BER:
+        *val = ci_biic.ber & BIBER_RD;
+        sim_debug (DBG_REG, &ci_dev, "BER rd: %08X\n", *val);
+        break;
+
+    case BI_EICR:
+        *val = ci_biic.eicr & BIECR_RD;
+        sim_debug (DBG_REG, &ci_dev, "EINTCSR rd: %08X\n", *val);
+        break;
+
+    case BI_IDEST:
+        *val = ci_biic.idest & BIID_RD;
+        sim_debug (DBG_REG, &ci_dev, "INTRDES rd: %08X\n", *val);
+        break;
+
+    case BI_IMSK:
+        *val = ci_biic.imsk & BIIMR_RD;
+        sim_debug (DBG_REG, &ci_dev, "IPIMR rd: %08X\n", *val);
+        break;
+
+    case BI_BCIC:
+        *val = ci_biic.bcic & BIBCI_RD;
+        sim_debug (DBG_REG, &ci_dev, "BCICR rd: %08X\n", *val);
+        break;
+
+    case BI_UIIC:
+        *val = ci_biic.uiic;
+        sim_debug (DBG_REG, &ci_dev, "UICR rd: %08X\n", *val);
+        break;
 
     case CNFGR_OF:
-        *val = ci_cnfgr | CNFGR_CODE;
+        *val = ci_cnfgr | (ci_bcmr & CNFGR_BCMR);
         sim_debug (DBG_REG, &ci_dev, "CNFGR rd: %08x\n", *val);
         break;
 
     case PMCSR_OF:
-    case PMCSR_OF1:
-        *val = (ci_pmcsr & PMCSR_RD);
+        *val = ci_pmcsr & PMCSR_RD;
         if (uptr->ci_state == PORT_UNINIT)
             *val |= PMCSR_UI;
         if ((ci_pmcsr & 0x7F00) > 0)                /* any error bits set? */
@@ -237,11 +290,30 @@ switch (rg) {                                           /* CI780 specific regist
         break;
 
     case MADR_OF:
-        *val = (ci_madr & MADR_ADDR);
+        *val = ci_madr & MADR_ADDR;
+        sim_debug (DBG_REG, &ci_dev, "MADR rd: %08x\n", *val);
         break;
 
     case MDATR_OF:
         *val = ci_mdatr[ci_madr];
+        sim_debug (DBG_REG, &ci_dev, "MDATR rd: %08x\n", *val);
+        break;
+
+    case BCAR_OF:
+        *val = ci_bcar;
+        sim_debug (DBG_REG, &ci_dev, "BCAR rd: %08x\n", *val);
+        break;
+
+    case BCMR_OF:
+        *val = ci_bcmr;
+        sim_debug (DBG_REG, &ci_dev, "BCMR rd: %08x\n", *val);
+        break;
+
+    case DMAF_OF + 0x0:
+    case DMAF_OF + 0x4:
+    case DMAF_OF + 0x8:
+    case DMAF_OF + 0xC:
+        *val = ci_dmaf[(rg - DMAF_OF) >> 2];
         break;
 
     default:
@@ -251,7 +323,7 @@ switch (rg) {                                           /* CI780 specific regist
 return SCPE_OK;
 }
 
-/* Write CI780 adapter register */
+/* Write CIBCI adapter register */
 
 t_stat ci_wrreg (int32 val, int32 pa, int32 lnt)
 {
@@ -269,13 +341,51 @@ for (p = &ci_regmap[0]; p->offset != 0; p++) {          /* check for port regist
     }
 switch (rg) {                                           /* case on type */
 
+    case BI_CSR:
+        sim_debug (DBG_REG, &ci_dev, "VAXBICSR wr: %08X\n", val);
+        if (val & BICSR_RST) {
+            ci_reset (&ci_dev);                         /* reset adapter */
+            break;
+            }
+        ci_biic.csr = (ci_biic.csr & ~BICSR_RW) | (val & BICSR_RW);
+        break;
+
+    case BI_BER:
+        sim_debug (DBG_REG, &ci_dev, "BER wr: %08X\n", val);
+        ci_biic.ber = ci_biic.ber & ~(val & BIBER_W1C);
+        break;
+
+    case BI_EICR:
+        sim_debug (DBG_REG, &ci_dev, "EINTCSR wr: %08X\n", val);
+        ci_biic.eicr = (ci_biic.eicr & ~BIECR_RW) | (val & BIECR_RW);
+        ci_biic.eicr = ci_biic.eicr & ~(val & BIECR_W1C);
+        break;
+
+    case BI_IDEST:
+        sim_debug (DBG_REG, &ci_dev, "INTRDES wr: %08X\n", val);
+        ci_biic.idest = val & BIID_RW;
+        break;
+
+    case BI_IMSK:
+        sim_debug (DBG_REG, &ci_dev, "IPIMR wr: %08X\n", val);
+        ci_biic.imsk = val & BIIMR_RW;
+        break;
+
+    case BI_BCIC:
+        sim_debug (DBG_REG, &ci_dev, "BCICR wr: %08X\n", val);
+        ci_biic.bcic = val & BIBCI_RW;
+        break;
+
+    case BI_UIIC:
+        sim_debug (DBG_REG, &ci_dev, "UICR wr: %08X\n", val);
+        break;
+
     case CNFGR_OF:
         sim_debug (DBG_REG, &ci_dev, "CNFGR wr: %08X\n", val);
-        ci_cnfgr = val & CNFGR_PFD;
+        ci_cnfgr = (ci_cnfgr & ~CNFGR_RW) | (val & CNFGR_RW); /* Set RW bits */
         break;
 
     case PMCSR_OF:
-    case PMCSR_OF1:
         sim_debug (DBG_REG, &ci_dev, "PMCSR wr: %08X\n", val);
         if (val & PMCSR_MI) {                           /* Maintenance Initialise */
             ci_reset (&ci_dev);
@@ -302,9 +412,27 @@ switch (rg) {                                           /* case on type */
         ci_mdatr[ci_madr] = val;
         break;
 
+    case BCAR_OF:
+        sim_debug (DBG_REG, &ci_dev, "BCAR wr: %08X\n", val);
+        ci_bcar = (val & BCAR_ADDR) << BCAR_V_ADDR;
+        break;
+
+    case BCMR_OF:
+        sim_debug (DBG_REG, &ci_dev, "BCMR wr: %08X\n", val);
+        ci_bcmr = (val & BCMR_MSK) << BCMR_V_MSK;
+        break;
+
+    case DMAF_OF + 0x0:
+    case DMAF_OF + 0x4:
+    case DMAF_OF + 0x8:
+    case DMAF_OF + 0xC:
+        ci_dmaf[(rg - DMAF_OF) >> 2] = val;
+        break;
+
     default:
         sim_debug (DBG_WRN, &ci_dev, "defaulting on write: %X\n", rg);
         }
+
 return SCPE_OK;
 }
 
@@ -323,15 +451,25 @@ CLR_NEXUS_INT (CI);
 return;
 }
 
-/* Reset CI780 adapter */
+/* Reset CIBCI adapter */
 
 t_stat ci_reset (DEVICE *dptr)
 {
 int32 i;
 
+ci_biic.csr = (1u << BICSR_V_IF) | BICSR_STS | (TR_CI & BICSR_NODE);
+ci_biic.ber = 0;
+ci_biic.eicr = 0;
+ci_biic.idest = 0;
+ci_biic.imsk = 0;
+ci_biic.uiic = BIICR_EXV;
 ci_cnfgr = 0;
-ci_pmcsr = 0;
+ci_pmcsr = PMCSR_UI;
 ci_madr = 0;
+ci_bcar = 0;
+ci_bcmr = 0;
+for (i = 0; i < 4; i++)
+    ci_dmaf[i] = 0;
 for (i = 0; i < 8192; i++)
     ci_mdatr[i] = 0;
 ci_dec_reset (dptr);

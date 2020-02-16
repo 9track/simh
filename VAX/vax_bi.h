@@ -126,6 +126,11 @@
 #define BIID_RW         0x0000FFFF
 #define BIID_RD         BIID_RW
 
+/* VAXBI inter-processor interrupt mask register */
+
+#define BIIMR_RW        0xFFFF0000
+#define BIIMR_RD        BIID_RW
+
 /* VAXBI BCI control and status register */
 
 #define BIBCI_BE        0x00020000                      /* burst enable */

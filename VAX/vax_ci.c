@@ -95,6 +95,67 @@
 
 #define port_ctx        up7                             /* port context */
 
+typedef struct {
+    const char *name;
+    uint32 dctrl;
+    uint32 dyn;
+} OPC_INFO;
+
+OPC_INFO opc_info[] {
+    { "(invalid)", 0, 0 },
+    { "SNDDG", DBG_PPDDG, DYN_CIDG },
+    { "SNDMSG", DBG_PPDDG, DYN_CIMSG },
+    { "RETCNF", DBG_BLKTF, DYN_CIMSG },
+    { "(invalid)", 0, 0 },
+    { "REQID", DBG_REQID, DYN_CIDG },
+    { "SNDRST", DBG_PPDDG, DYN_CIDG },
+    { "SNDSTRT", DBG_PPDDG, DYN_CIDG },
+    { "REQDAT", DBG_BLKTF, DYN_CIMSG },
+    { "REQDAT1", DBG_BLKTF, DYN_CIMSG },
+    { "REQDAT2", DBG_BLKTF, DYN_CIMSG },
+    { "RETID", DBG_REQID, DYN_CIDG },
+    { "(invalid)", 0, 0 },
+    { "SNDLB", DBG_LCMD, 0 },
+    { "REQMDAT", DBG_BLKTF, DYN_CIMSG },
+    { "(invalid)", 0, 0 },
+    { "SNDDAT", DBG_BLKTF, DYN_CIMSG },
+    { "RETDAT", DBG_BLKTF, DYN_CIMSG },
+    { "SNDMDAT", DBG_BLKTF, DYN_CIMSG },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "INVTC", DBG_LCMD, 0 },
+    { "SETCKT",DBG_LCMD, 0 },
+    { "RDCNT", DBG_LCMD, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "DGREC", DBG_PPDDG, DYN_CIDG },
+    { "MSGREC", DBG_PPDDG, DYN_CIMSG },
+    { "CNFREC", DBG_BLKTF, DYN_CIMSG },
+    { "(invalid)", 0, 0 },
+    { "REQREC", DBG_REQID, DYN_CIDG },
+    { "RSTREC", DBG_PPDDG, DYN_CIDG },
+    { "STRTREC", DBG_PPDDG, DYN_CIDG },
+    { "REQDATREC", DBG_BLKTF, DYN_CIMSG },
+    { "MCNFREC", DBG_BLKTF, DYN_CIMSG },
+    { "(invalid)", 0, 0 },
+    { "IDREC", DBG_REQID, DYN_CIDG },
+    { "(invalid)", 0, 0 },
+    { "LBREC", DBG_LCMD, 0 },
+    { "(invalid)", 0, 0 },
+    { "(invalid)", 0, 0 },
+    { "SNDDATREC", DBG_BLKTF, DYN_CIMSG },
+    { "DATREC", DBG_BLKTF, DYN_CIMSG },
+    { "(invalid)", 0, 0 },
+    { "MDATREC", DBG_BLKTF, DYN_CIMSG }
+    };
+
 const char* opc_types[] = {                             /* OPC debug definitions */
     "(invalid)",
     "SNDDG",
@@ -495,35 +556,35 @@ uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE) & DG_MTYPE;
 
 switch (dg_type) {
 
-    case 0:
+    case DG_START:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDDG - START, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 1:
+    case DG_STACK:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDDG - STACK dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 2:
+    case DG_ACK:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDDG - ACK, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 3:
+    case DG_SCSDG:
         sim_debug_unit (DBG_SCSDG, uptr, "==> SNDDG - SCSDG, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 4:
+    case DG_SCSMSG:
         sim_debug_unit (DBG_WRN, uptr, "==> SNDDG - SCSMSG, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 5:
+    case DG_ELOG:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDDG - ELOG, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 6:
+    case DG_HOSTSHUT:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDDG - HOSTSHUT, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 7:
+    case DG_FUDG:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDDG - FU_DG, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
@@ -556,40 +617,40 @@ t_stat ci_sndmsg (UNIT *uptr, CI_PKT *pkt)
 uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 uint16 dg_type = CI_GET16 (pkt->data, PPD_MTYPE) & DG_MTYPE;
-uint16 msg_type;
+uint16 scs_type;
 
 switch (dg_type) {
 
-    case 0:
+    case DG_START:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDMSG - START, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 1:
+    case DG_STACK:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDMSG - STACK dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 2:
+    case DG_ACK:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDMSG - ACK, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 3:
+    case DG_SCSDG:
         sim_debug_unit (DBG_WRN, uptr, "==> SNDMSG - SCSDG, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 4:
-        msg_type = CI_GET16 (pkt->data, PPD_STYPE);
-        sim_debug_unit (DBG_SCSMSG, uptr, "==> SCSMSG - %s, dest: %d, path: %s\n", scs_msg_types[msg_type], port, ci_path_names[path]);
+    case DG_SCSMSG:
+        scs_type = CI_GET16 (pkt->data, PPD_STYPE);
+        sim_debug_unit (DBG_SCSMSG, uptr, "==> SCSMSG - %s, dest: %d, path: %s\n", scs_msg_types[scs_type], port, ci_path_names[path]);
         break;
 
-    case 5:
+    case DG_ELOG:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDMSG - ELOG, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 6:
+    case DG_HOSTSHUT:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDMSG - HOSTSHUT, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 7:
+    case DG_FUDG:
         sim_debug_unit (DBG_PPDDG, uptr, "==> SNDMSG - FU_DG, dest: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
@@ -600,7 +661,7 @@ switch (dg_type) {
 
 pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_MSGHDR;
 ci_dump_pkt (DBG_PPDDG, uptr, pkt->data, pkt->length);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 if (!ci_check_vc (uptr, port))
     pkt->data[PPD_STATUS] = STS_VCC;                    /* VC closed */
 return SCPE_OK;
@@ -618,12 +679,8 @@ return SCPE_OK;
  *                                     */
 t_stat ci_reqid (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 pkt->length = PPD_HDR;
 ci_debug_pkt (DBG_REQID, uptr, pkt);
-//sim_debug_unit (DBG_REQID, uptr, "==> REQID, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -646,24 +703,15 @@ return SCPE_OK;
  *                                                    */
 t_stat ci_reqdat (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_BLKTF, uptr, pkt);
-//sim_debug_unit (DBG_BLKTF, uptr, "==> REQDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 return SCPE_OK;
 }
 
 t_stat ci_retid (UNIT *uptr, CI_PKT *pkt)
 {
 uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
-//CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
-//CI_NODE *node = &cp->nodes[port];
 ci_debug_pkt (DBG_REQID, uptr, pkt);
-//sim_debug_unit (DBG_REQID, uptr, "==> RETID, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 if (ci_check_vc (uptr, port))                           /* VC open? */
     pkt->data[PPD_LCONID] = 1;                          /* set transaction ID */
 return SCPE_OK;
@@ -686,12 +734,8 @@ return SCPE_OK;
  *                                     */
 t_stat ci_sndlb (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 pkt->length = CI_GET16 (pkt->data, PPD_LENGTH) + PPD_DGHDR;
 ci_debug_pkt (DBG_LCMD, uptr, pkt);
-//sim_debug_unit (DBG_LCMD, uptr, "==> SNDLB, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_LCMD, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -730,56 +774,36 @@ return SCPE_OK;
  */
 t_stat ci_snddat (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_BLKTF, uptr, pkt);
-//sim_debug_unit (DBG_BLKTF, uptr, "==> SNDDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 return SCPE_OK;
 }
 
 t_stat ci_retdat (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_BLKTF, uptr, pkt);
-//sim_debug_unit (DBG_BLKTF, uptr, "==> RETDAT, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 return SCPE_OK;
 }
 
 t_stat ci_retcnf (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_BLKTF, uptr, pkt);
-//sim_debug_unit (DBG_BLKTF, uptr, "==> RETCNF, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 return SCPE_OK;
 }
 
 t_stat ci_sndrst (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 pkt->length = 0x10;
 ci_debug_pkt (DBG_PPDDG, uptr, pkt);
-//sim_debug_unit (DBG_PPDDG, uptr, "==> SNDRST, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, 0x10);
 return SCPE_OK;
 }
 
 t_stat ci_sndstrt (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 pkt->length = 0x10;
 ci_debug_pkt (DBG_PPDDG, uptr, pkt);
-//sim_debug_unit (DBG_PPDDG, uptr, "==> SNDSTRT, dest: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, 0x10);
 return SCPE_OK;
 }
 
@@ -867,35 +891,35 @@ uint32 dg_type = pkt->data[PPD_MTYPE];
 
 switch (dg_type) {
 
-    case 0:
+    case DG_START:
         sim_debug_unit (DBG_PPDDG, uptr, "<== DGREC - START, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 1:
+    case DG_STACK:
         sim_debug_unit (DBG_PPDDG, uptr, "<== DGREC - STACK, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 2:
+    case DG_ACK:
         sim_debug_unit (DBG_PPDDG, uptr, "<== DGREC - ACK, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 3:
+    case DG_SCSDG:
         sim_debug_unit (DBG_SCSDG, uptr, "<== DGREC - SCSDG, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 4:
+    case DG_SCSMSG:
         sim_debug_unit (DBG_WRN, uptr, "<== DGREC - SCSMSG, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 5:
+    case DG_ELOG:
         sim_debug_unit (DBG_PPDDG, uptr, "<== DGREC - ELOG, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 6:
+    case DG_HOSTSHUT:
         sim_debug_unit (DBG_PPDDG, uptr, "<== DGREC - HOSTSHUT, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 7:
+    case DG_FUDG:
         sim_debug_unit (DBG_PPDDG, uptr, "<== DGREC - FU_DG, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
@@ -932,37 +956,36 @@ uint32 msg_type;
 
 switch (dg_type) {
 
-    case 0:
+    case DG_START:
         sim_debug_unit (DBG_PPDDG, uptr, "<== MSGREC - START, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 1:
+    case DG_STACK:
         sim_debug_unit (DBG_PPDDG, uptr, "<== MSGREC - STACK, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 2:
+    case DG_ACK:
         sim_debug_unit (DBG_PPDDG, uptr, "<== MSGREC - ACK, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 3:
+    case DG_SCSDG:
         sim_debug_unit (DBG_WRN, uptr, "<== MSGREC - SCSDG, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 4:
+    case DG_SCSMSG:
         msg_type = pkt->data[PPD_STYPE];
         sim_debug_unit (DBG_SCSMSG, uptr, "<== SCSMSG - %s, src: %d, path: %s\n", scs_msg_types[msg_type], port, ci_path_names[path]);
-//        ci_dump_packet (uptr, pkt->data, msg_size);
         break;
 
-    case 5:
+    case DG_ELOG:
         sim_debug_unit (DBG_PPDDG, uptr, "<== MSGREC - ELOG, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 6:
+    case DG_HOSTSHUT:
         sim_debug_unit (DBG_PPDDG, uptr, "<== MSGREC - HOSTSHUT, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
-    case 7:
+    case DG_FUDG:
         sim_debug_unit (DBG_PPDDG, uptr, "<== MSGREC - FU_DG, src: %d, path: %s\n", port, ci_path_names[path]);
         break;
 
@@ -971,7 +994,7 @@ switch (dg_type) {
         break;
         }
 
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 ci_dump_pkt (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
@@ -988,11 +1011,7 @@ return SCPE_OK;
  *                                     */
 t_stat ci_reqrec (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_REQID, uptr, pkt);
-//sim_debug_unit (DBG_REQID, uptr, "<== REQREC, src: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
@@ -1015,12 +1034,8 @@ return SCPE_OK;
  *                                                    */
 t_stat ci_reqdatrec (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_BLKTF, uptr, pkt);
-//sim_debug_unit (DBG_BLKTF, uptr, "<== REQDATREC, src: %d, path: %s\n", port, ci_path_names[path]);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
-//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 return SCPE_OK;
 }
 
@@ -1042,22 +1057,14 @@ return SCPE_OK;
  *                                         */
 t_stat ci_idrec (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_REQID, uptr, pkt);
-//sim_debug_unit (DBG_REQID, uptr, "<== IDREC, src: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_REQID, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
 t_stat ci_datrec (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_BLKTF, uptr, pkt);
-//sim_debug_unit (DBG_BLKTF, uptr, "<== DATREC, src: %d, path: %s\n", port, ci_path_names[path]);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
-//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 return SCPE_OK;
 }
 
@@ -1067,19 +1074,15 @@ uint32 port = pkt->data[PPD_PORT];
 uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 uint32 boff = CI_GET32 (pkt->data, PPD_RBOFF);
 sim_debug_unit (DBG_BLKTF, uptr, "<== SNDDATREC, src: %d, path: %s, boff: %X\n", port, ci_path_names[path], boff);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 ci_dump_pkt (DBG_BLKTF, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
 t_stat ci_cnfrec (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_BLKTF, uptr, pkt);
-//sim_debug_unit (DBG_BLKTF, uptr, "<== CNFREC, src: %d, path: %s\n", port, ci_path_names[path]);
-pkt->data[PPD_TYPE] = DYN_SCSMSG;
-//ci_dump_packet (DBG_BLKTF, uptr, pkt->data, pkt->length);
+pkt->data[PPD_TYPE] = DYN_CIMSG;
 return SCPE_OK;
 }
 
@@ -1112,21 +1115,13 @@ return SCPE_OK;
 
 t_stat ci_rstrec (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_PPDDG, uptr, pkt);
-//sim_debug_unit (DBG_PPDDG, uptr, "<== RSTREC, src: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 
 t_stat ci_strtrec (UNIT *uptr, CI_PKT *pkt)
 {
-//uint32 port = pkt->data[PPD_PORT];
-//uint32 path = GET_PATH (pkt->data[PPD_FLAGS]);
 ci_debug_pkt (DBG_PPDDG, uptr, pkt);
-//sim_debug_unit (DBG_PPDDG, uptr, "<== STRTREC, src: %d, path: %s\n", port, ci_path_names[path]);
-//ci_dump_packet (DBG_PPDDG, uptr, pkt->data, pkt->length);
 return SCPE_OK;
 }
 

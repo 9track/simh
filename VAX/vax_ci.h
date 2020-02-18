@@ -97,8 +97,8 @@
 
 /* Datastructure types */
 
-#define DYN_SCSDG       0x3B                            /* SCS datagram */
-#define DYN_SCSMSG      0x3C                            /* SCS message */
+#define DYN_CIDG        0x3B                            /* CI datagram */
+#define DYN_CIMSG       0x3C                            /* CI message */
 
 /* PPD Offsets */
 

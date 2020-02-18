@@ -182,7 +182,6 @@ const char* ci_path_names[] = {
     };
 
 typedef struct {
-  uint8       port;
   CI_PKT      pkt;
 } CI_ITEM;
 
@@ -821,6 +820,7 @@ ci_dump_pkt (DBG_LCMD, uptr, pkt->data, pkt->length);
 vcd_nval &= ~vcd_mmsk;
 vcd_nval |= vcd_mval;
 
+sim_debug_unit (DBG_CONN, uptr, "SETCKT: val = %04X, nval = %04X\n", vcd_val, vcd_nval);
 if (VCD_OPEN (vcd_nval) && !VCD_OPEN (vcd_val))         /* Opening VC */
     r = ci_open_vc (uptr, port);
 else if (!VCD_OPEN (vcd_nval) && VCD_OPEN (vcd_val))    /* Closing VC */
@@ -1138,14 +1138,17 @@ CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
 CI_NODE *node = &cp->nodes[port];
 SOCKET newsock;
 
+sim_debug_unit (DBG_CONN, uptr, "VC Open: Link in state %d\n", node->conn);
 if (node->conn > LINK_CLOSED)                           /* already open? */
     return SCPE_OK;                                     /* yes, done */
 sim_debug_unit (DBG_CONN, uptr, "Opening VC with node %d...\n", port);
 if (node->uptr) {                                       /* local port? */
+    sim_debug_unit (DBG_CONN, uptr, "Node is local\n", port);
     node->conn = LINK_OPEN;
     return SCPE_OK;
     }
 if (uptr->ci_node > port) {                             /* are we the server? */
+    sim_debug_unit (DBG_CONN, uptr, "Local node is server\n", port);
     node->conn = LINK_WAIT;                             /* wait for client */
     return SCPE_OK;
     }
@@ -1168,6 +1171,7 @@ t_stat ci_close_vc (UNIT *uptr, uint8 port)
 CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
 CI_NODE *node = &cp->nodes[port];
 
+sim_debug_unit (DBG_CONN, uptr, "VC Close: Link in state %d\n", node->conn);
 if (node->conn == LINK_CLOSED)                          /* already closed? */
     return SCPE_OK;                                     /* yes, done */
 sim_debug_unit (DBG_CONN, uptr, "Closing VC with node %d...\n", port);
@@ -1218,6 +1222,7 @@ t_stat ci_send_packet (UNIT *uptr, CI_PKT *pkt)
 {
 CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
 uint32 port = pkt->data[PPD_PORT];
+uint32 opcode = pkt->data[PPD_OPC];
 CI_NODE *node;
 CI_PKT tpkt;
 int32 r;
@@ -1248,15 +1253,29 @@ strncpy (&tpkt.data[HDR_VCPORT], cp->tcp_port, 5);      /* VC port */
 
 if (node->conn > LINK_WAIT) {                           /* link established? */
     if (cp->tx_queue.count == 0) {                      /* need to queue? */
+        sim_debug_unit (DBG_CONN, uptr, "using TCP/IP link\n");
         r = sim_write_sock (node->socket, tpkt.data, tpkt.length);
-        if (r < 0)
+        if (r < 0) {
+            sim_debug_unit (DBG_CONN, uptr, "transmit failed, queued\n");
             ciq_insert (&cp->tx_queue, &tpkt);          /* try later */
+            }
         }
-    else
+    else {
+        sim_debug_unit (DBG_CONN, uptr, "transmit busy, queued\n");
         ciq_insert (&cp->tx_queue, &tpkt);
+        }
+        return SCPE_OK;
     }
-else if (uptr->flags & UNIT_ATT)                        /* no, use multicast */
+else if ((node->conn == LINK_WAIT) && (opcode == OPC_SNDMSG)) {
+    sim_debug_unit (DBG_CONN, uptr, "TCPIP link pending, queued\n");
+    ciq_insert (&cp->tx_queue, &tpkt);
+    return SCPE_OK;
+    }
+else if (uptr->flags & UNIT_ATT) {                      /* no, use multicast */
+    sim_debug_unit (DBG_CONN, uptr, "using UDP multicast link\n");
     r = sim_write_sock_ex (cp->multi_sock, tpkt.data, tpkt.length, cp->group, SIM_SOCK_OPT_DATAGRAM);
+    return SCPE_OK;
+    }
 pkt->data[PPD_STATUS] = STS_NP;                         /* no path */
 return SCPE_OK;
 }
@@ -1429,7 +1448,7 @@ t_stat ci_port_svc (UNIT *uptr)
 CI_PORT *cp = (CI_PORT *)uptr->port_ctx;
 SOCKET newsock;
 uint32 i;
-uint8  src_ci_port;
+uint8  port;
 t_stat r;
 CI_ITEM *item;
 
@@ -1442,7 +1461,14 @@ while (cp->tx_queue.count > 0) {                        /* process transmit queu
     if (cp->tx_queue.loss > 0)
         sim_printf ("Warning: CI queue packet loss is %d\n", cp->tx_queue.loss);
     item = &cp->tx_queue.item[cp->tx_queue.head];
-    r = sim_write_sock (cp->nodes[item->port].socket, item->pkt.data, CI_MAXFR);
+    port = item->pkt.data[PPD_PORT];
+    if (cp->nodes[port].socket == 0) {
+        sim_debug_unit (DBG_CONN, uptr, "Unable to send queued packet to node %d, socket: closed\n", port);
+        break;
+        }
+    sim_debug_unit (DBG_CONN, uptr, "Attempting to send queued packet to node %d, socket: %d\n", port, cp->nodes[port].socket);
+    r = sim_write_sock (cp->nodes[port].socket, item->pkt.data, item->pkt.length);
+    sim_debug_unit (DBG_CONN, uptr, "Return status is %d\n", r);
     if (r < 0) break;
     ciq_remove (&cp->tx_queue);                         /* remove processed packet from queue */
     }
@@ -1453,17 +1479,18 @@ for (i = 0; i < CI_MAX_NODES; i++) {                    /* check pending connect
         if (r < 0) continue;                            /* no, continue */
         r = sim_read_sock (cp->wait_sock[i], rcv_pkt.data, CI_MAXFR);
         if (r == 0) continue;                           /* nothing received, continue */
-        src_ci_port = rcv_pkt.data[HDR_SOURCE];
-        if (cp->nodes[src_ci_port].socket > 0) {        /* VC already open? */
+        port = rcv_pkt.data[HDR_SOURCE];
+        if (cp->nodes[port].socket > 0) {               /* VC already open? */
+            sim_debug_unit (DBG_CONN, uptr, "Rejecting connection from node %d, socket: %d\n", port, cp->wait_sock[i]);
             sim_close_sock (cp->wait_sock[i]);          /* reject connection */
             cp->wait_sock[i] = 0;                       /* clear pending connection */
             }
         else {
-            sim_debug_unit (DBG_CONN, uptr, "Accepting connection from node %d, socket: %d\n", src_ci_port, cp->wait_sock[i]);
+            sim_debug_unit (DBG_CONN, uptr, "Accepting connection from node %d, socket: %d\n", port, cp->wait_sock[i]);
             rcv_pkt.length = CI_GET16 (rcv_pkt.data, HDR_LENGTH);
             ciq_insert (&cp->rx_queue, &rcv_pkt);
-            cp->nodes[src_ci_port].socket = cp->wait_sock[i];
-            cp->nodes[src_ci_port].conn = LINK_OPEN;
+            cp->nodes[port].socket = cp->wait_sock[i];
+            cp->nodes[port].conn = LINK_OPEN;
             cp->wait_sock[i] = 0;                       /* clear pending connection */
             }
         }
@@ -1471,8 +1498,10 @@ for (i = 0; i < CI_MAX_NODES; i++) {                    /* check pending connect
 
 newsock = sim_accept_conn (cp->tcp_sock, NULL);         /* check for new VCs */
 if (newsock != INVALID_SOCKET)  {
+    sim_debug_unit (DBG_CONN, uptr, "Pending connection request socket: %d\n", newsock);
     for (i = 0; i < CI_MAX_NODES; i++) {                /* find free queue entry */
         if (cp->wait_sock[i] == 0) {
+            sim_debug_unit (DBG_CONN, uptr, "Connection request queued at %d\n", i);
             cp->wait_sock[i] = newsock;                 /* save socket in queue */
             break;
             }

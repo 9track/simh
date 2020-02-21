@@ -101,7 +101,7 @@ typedef struct {
     uint32 dyn;
 } OPC_INFO;
 
-OPC_INFO opc_info[] {
+OPC_INFO opc_info[] = {
     { "(invalid)", 0, 0 },
     { "SNDDG", DBG_PPDDG, DYN_CIDG },
     { "SNDMSG", DBG_PPDDG, DYN_CIMSG },

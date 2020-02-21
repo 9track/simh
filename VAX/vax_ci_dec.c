@@ -615,7 +615,7 @@ return SCPE_OK;
 t_stat ci_dispose (UNIT *uptr, CI_PKT *pkt)
 {
 if (pkt->addr != 0) {
-    if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
+    if (pkt->data[PPD_TYPE] == DYN_CIMSG)
         return ci_put_mfq (pkt);
     else
         return ci_put_dfq (pkt);
@@ -640,7 +640,7 @@ t_stat ci_receive_int (UNIT *uptr, CI_PKT *pkt)
 {
 t_stat r;
 if (pkt->addr == 0) {
-    if (pkt->data[PPD_TYPE] == DYN_SCSMSG)
+    if (pkt->data[PPD_TYPE] == DYN_CIMSG)
         r = ci_get_mfq (pkt);
     else
         r = ci_get_dfq (pkt);
